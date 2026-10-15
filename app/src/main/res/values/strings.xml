@@ -1,0 +1,6 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name">منظّف الرسائل</string>
+    <string name="compose_title">رسالة جديدة</string>
+    <string name="channel_incoming">الرسائل الواردة</string>
+</resources>
