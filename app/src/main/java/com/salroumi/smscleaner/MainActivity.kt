@@ -4,6 +4,7 @@ import android.Manifest
 import android.content.ActivityNotFoundException
 import android.content.Intent
 import android.content.pm.PackageManager
+import android.net.Uri
 import android.os.Build
 import android.os.Bundle
 import android.provider.Settings
@@ -32,7 +33,7 @@ class MainActivity : ComponentActivity() {
 
     private val roleLauncher =
         registerForActivityResult(ActivityResultContracts.StartActivityForResult()) {
-            viewModel.refreshStatus(hasSmsPermission())
+            viewModel.onRoleResult(hasSmsPermission())
         }
 
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -51,6 +52,11 @@ class MainActivity : ComponentActivity() {
                 launchSafely(DefaultSmsHelper.restoreIntent(this))
             },
             onDismissRestore = viewModel::dismissRestoreHint,
+            onOpenAppSettings = {
+                startActivity(
+                    Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS, Uri.fromParts("package", packageName, null)),
+                )
+            },
             onMessageShown = viewModel::messageShown,
         )
 

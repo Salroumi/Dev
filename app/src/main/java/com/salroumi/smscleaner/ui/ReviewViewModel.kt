@@ -30,6 +30,8 @@ data class UiState(
     /** Set after a deletion so the user is reminded to restore their usual SMS app. */
     val showRestoreHint: Boolean = false,
     val previousAppLabel: String? = null,
+    /** Incremented each time the "make default SMS app" request returns. */
+    val roleResults: Int = 0,
 ) {
     val visibleItems: List<ReviewItem>
         get() = if (filter == null) items else items.filter { it.verdict.category == filter }
@@ -55,6 +57,11 @@ class ReviewViewModel(app: Application) : AndroidViewModel(app) {
                 previousAppLabel = DefaultSmsHelper.previousAppLabel(app),
             )
         }
+    }
+
+    fun onRoleResult(hasPermission: Boolean) {
+        refreshStatus(hasPermission)
+        _state.update { it.copy(roleResults = it.roleResults + 1) }
     }
 
     fun scan() {

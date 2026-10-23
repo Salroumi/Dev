@@ -67,6 +67,7 @@ class ReviewActions(
     val onDelete: () -> Unit,
     val onRestoreDefault: () -> Unit,
     val onDismissRestore: () -> Unit,
+    val onOpenAppSettings: () -> Unit,
     val onMessageShown: () -> Unit,
 )
 
@@ -77,6 +78,7 @@ fun ReviewScreen(state: UiState, actions: ReviewActions) {
     var showConfirm by rememberSaveable { mutableStateOf(false) }
     var showNeedDefault by rememberSaveable { mutableStateOf(false) }
     var awaitingRole by rememberSaveable { mutableStateOf(false) }
+    var showRoleDenied by rememberSaveable { mutableStateOf(false) }
 
     LaunchedEffect(state.message) {
         state.message?.let {
@@ -85,10 +87,10 @@ fun ReviewScreen(state: UiState, actions: ReviewActions) {
         }
     }
     // After the user made this app the default, continue straight to the confirmation step.
-    LaunchedEffect(state.isDefaultApp, awaitingRole) {
-        if (awaitingRole && state.isDefaultApp) {
+    LaunchedEffect(state.roleResults) {
+        if (awaitingRole && state.roleResults > 0) {
             awaitingRole = false
-            showConfirm = true
+            if (state.isDefaultApp) showConfirm = true else showRoleDenied = true
         }
     }
 
@@ -160,6 +162,30 @@ fun ReviewScreen(state: UiState, actions: ReviewActions) {
                 }) { Text("متابعة") }
             },
             dismissButton = { TextButton(onClick = { showNeedDefault = false }) { Text("إلغاء") } },
+        )
+    }
+
+    if (showRoleDenied) {
+        AlertDialog(
+            onDismissRequest = { showRoleDenied = false },
+            icon = { Icon(Icons.Default.Warning, contentDescription = null) },
+            title = { Text("لم يتم تعيين التطبيق كافتراضي") },
+            text = {
+                Text(
+                    "غالبًا منع أندرويد ذلك لأن التطبيق مثبّت من خارج المتجر. لحلها:\n\n" +
+                        "١. اضغط «فتح الإعدادات» بالأسفل\n" +
+                        "٢. اضغط النقاط الثلاث ⋮ أعلى الشاشة\n" +
+                        "٣. اختر «السماح بالإعدادات المقيّدة» وأكّد بالبصمة\n" +
+                        "٤. ارجع هنا واضغط «حذف المحدد» مرة أخرى",
+                )
+            },
+            confirmButton = {
+                TextButton(onClick = {
+                    showRoleDenied = false
+                    actions.onOpenAppSettings()
+                }) { Text("فتح الإعدادات") }
+            },
+            dismissButton = { TextButton(onClick = { showRoleDenied = false }) { Text("إغلاق") } },
         )
     }
 
