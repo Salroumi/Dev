@@ -38,6 +38,8 @@ import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.SnackbarHost
 import androidx.compose.material3.SnackbarHostState
+import androidx.compose.material3.Tab
+import androidx.compose.material3.TabRow
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
@@ -58,6 +60,7 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import com.salroumi.smscleaner.BuildConfig
 import com.salroumi.smscleaner.analysis.Category
+import com.salroumi.smscleaner.analysis.SmsAnalyzer
 import java.text.DateFormat
 import java.util.Date
 
@@ -68,6 +71,9 @@ class ReviewActions(
     val onFilter: (Category?) -> Unit,
     val onQuery: (String) -> Unit,
     val onTextQuery: (String) -> Unit,
+    val onShowSenders: (Boolean) -> Unit,
+    val onOpenSender: (key: String, selectAll: Boolean) -> Unit,
+    val onClearSender: () -> Unit,
     val onSelectAllVisible: (Boolean) -> Unit,
     val onRequestDefault: () -> Unit,
     val onDelete: () -> Unit,
@@ -120,7 +126,7 @@ fun ReviewScreen(state: UiState, actions: ReviewActions) {
         },
         snackbarHost = { SnackbarHost(snackbar) },
         bottomBar = {
-            if (state.scanned && state.items.isNotEmpty()) {
+            if (state.scanned && state.items.isNotEmpty() && !state.showSenders) {
                 Surface(shadowElevation = 8.dp) {
                     Button(
                         onClick = {
@@ -142,7 +148,14 @@ fun ReviewScreen(state: UiState, actions: ReviewActions) {
             when {
                 !state.hasPermission -> PermissionPrompt(actions.onGrantPermission)
                 !state.scanned && !state.loading -> StartPrompt(actions.onScan)
-                else -> Results(state, actions)
+                else -> Results(
+                    state,
+                    actions,
+                    onDeleteSender = { key ->
+                        actions.onOpenSender(key, true)
+                        if (state.isDefaultApp) showConfirm = true else showNeedDefault = true
+                    },
+                )
             }
             if (state.loading) {
                 CircularProgressIndicator(Modifier.align(Alignment.Center))
@@ -261,7 +274,100 @@ private fun CenteredMessage(title: String, body: String, button: String, onClick
 }
 
 @Composable
-private fun Results(state: UiState, actions: ReviewActions) {
+private fun Results(state: UiState, actions: ReviewActions, onDeleteSender: (String) -> Unit) {
+    Column(Modifier.fillMaxSize()) {
+        TabRow(selectedTabIndex = if (state.showSenders) 1 else 0) {
+            Tab(
+                selected = !state.showSenders,
+                onClick = { actions.onShowSenders(false) },
+                text = { Text("الرسائل") },
+            )
+            Tab(
+                selected = state.showSenders,
+                onClick = { actions.onShowSenders(true) },
+                text = { Text("المرسلون") },
+            )
+        }
+        if (state.showSenders) {
+            SendersList(state, actions, onDeleteSender)
+        } else {
+            MessagesList(state, actions)
+        }
+    }
+}
+
+@Composable
+private fun SendersList(state: UiState, actions: ReviewActions, onDeleteSender: (String) -> Unit) {
+    val senders = remember(state.items) { summarizeSenders(state.items) }
+    var search by rememberSaveable { mutableStateOf("") }
+    val q = SmsAnalyzer.normalize(search)
+    val shown = if (q.isEmpty()) senders else senders.filter {
+        SmsAnalyzer.normalize(it.name + " " + it.address).contains(q)
+    }
+    LazyColumn(
+        contentPadding = PaddingValues(12.dp),
+        verticalArrangement = Arrangement.spacedBy(8.dp),
+    ) {
+        item {
+            OutlinedTextField(
+                value = search,
+                onValueChange = { search = it },
+                modifier = Modifier.fillMaxWidth(),
+                singleLine = true,
+                placeholder = { Text("ابحث عن مرسل") },
+                leadingIcon = { Icon(Icons.Default.Search, contentDescription = null) },
+            )
+        }
+        item {
+            Text(
+                "${senders.size} مرسل • مرتبون حسب عدد الرسائل",
+                style = MaterialTheme.typography.labelSmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+        }
+        items(shown, key = { it.key }) { sender ->
+            Card(
+                modifier = Modifier.fillMaxWidth().clickable { actions.onOpenSender(sender.key, false) },
+            ) {
+                Row(Modifier.padding(12.dp), verticalAlignment = Alignment.CenterVertically) {
+                    Column(Modifier.weight(1f)) {
+                        Text(sender.name, fontWeight = FontWeight.Bold, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                        if (sender.name != sender.address && sender.address.isNotBlank()) {
+                            Text(
+                                sender.address,
+                                style = MaterialTheme.typography.labelSmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            )
+                        }
+                        Text(
+                            "${sender.total} رسالة" +
+                                if (sender.suggested > 0) " • ${sender.suggested} مقترح حذفها" else "",
+                            style = MaterialTheme.typography.bodySmall,
+                        )
+                    }
+                    Surface(color = MaterialTheme.colorScheme.primary, shape = MaterialTheme.shapes.small) {
+                        Text(
+                            sender.total.toString(),
+                            color = MaterialTheme.colorScheme.onPrimary,
+                            fontWeight = FontWeight.Bold,
+                            modifier = Modifier.padding(horizontal = 10.dp, vertical = 4.dp),
+                        )
+                    }
+                    IconButton(onClick = { onDeleteSender(sender.key) }) {
+                        Icon(
+                            Icons.Default.Delete,
+                            contentDescription = "حذف كل رسائل ${sender.name}",
+                            tint = MaterialTheme.colorScheme.error,
+                        )
+                    }
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun MessagesList(state: UiState, actions: ReviewActions) {
     val counts = state.counts
     LazyColumn(
         contentPadding = PaddingValues(12.dp),
@@ -281,6 +387,18 @@ private fun Results(state: UiState, actions: ReviewActions) {
                 style = MaterialTheme.typography.labelSmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
+        }
+        state.senderFilter?.let { key ->
+            item {
+                val name = state.items.firstOrNull { it.senderKey == key }
+                    ?.let { it.sms.contactName ?: it.sms.address } ?: key
+                FilterChip(
+                    selected = true,
+                    onClick = actions.onClearSender,
+                    label = { Text("رسائل: $name") },
+                    trailingIcon = { Icon(Icons.Default.Clear, contentDescription = "إلغاء") },
+                )
+            }
         }
         item {
             OutlinedTextField(

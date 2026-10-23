@@ -23,10 +23,43 @@ data class ReviewItem(val sms: SmsRecord, val verdict: Verdict) {
     private val searchableSender: String = SmsAnalyzer.normalize(sms.address + " " + sms.contactName.orEmpty())
     private val senderDigits: String = sms.address.filter { it.isDigit() }
 
+    /** Groups "+966551234567" and "0551234567" as the same sender. */
+    val senderKey: String = senderKeyOf(sms.address)
+
     fun matchesSender(query: String, queryDigits: String?): Boolean =
         searchableSender.contains(query) ||
             (!queryDigits.isNullOrEmpty() && senderDigits.contains(queryDigits))
 }
+
+fun senderKeyOf(address: String): String {
+    val trimmed = address.trim()
+    if (trimmed.isEmpty() || trimmed.any { it.isLetter() }) return trimmed.lowercase()
+    var digits = trimmed.filter { it.isDigit() }.trimStart('0')
+    if (digits.startsWith("966") && digits.length > 9) digits = digits.removePrefix("966")
+    return digits
+}
+
+data class SenderSummary(
+    val key: String,
+    val name: String,
+    val address: String,
+    val total: Int,
+    val suggested: Int,
+    val lastDate: Long,
+)
+
+fun summarizeSenders(items: List<ReviewItem>): List<SenderSummary> =
+    items.groupBy { it.senderKey }.map { (key, list) ->
+        val address = list.first().sms.address
+        SenderSummary(
+            key = key,
+            name = list.firstNotNullOfOrNull { it.sms.contactName } ?: address.ifBlank { "مجهول" },
+            address = address,
+            total = list.size,
+            suggested = list.count { it.verdict.suggestDelete },
+            lastDate = list.maxOf { it.sms.date },
+        )
+    }.sortedWith(compareByDescending<SenderSummary> { it.total }.thenByDescending { it.lastDate })
 
 data class UiState(
     val hasPermission: Boolean = false,
@@ -40,6 +73,9 @@ data class UiState(
     val query: String = "",
     /** Message-text search. */
     val textQuery: String = "",
+    /** When set, only messages from this sender (see [senderKeyOf]) are listed. */
+    val senderFilter: String? = null,
+    val showSenders: Boolean = false,
     val message: String? = null,
     /** Set after a deletion so the user is reminded to restore their usual SMS app. */
     val showRestoreHint: Boolean = false,
@@ -60,6 +96,7 @@ data class UiState(
             val t = SmsAnalyzer.normalize(textQuery)
             return items.filter { item ->
                 (filter == null || item.verdict.category == filter) &&
+                    (senderFilter == null || item.senderKey == senderFilter) &&
                     (q.isEmpty() || item.matchesSender(q, qDigits)) &&
                     (t.isEmpty() || item.searchableBody.contains(t))
             }
@@ -150,6 +187,23 @@ class ReviewViewModel(app: Application) : AndroidViewModel(app) {
     fun setQuery(query: String) = _state.update { it.copy(query = query) }
 
     fun setTextQuery(text: String) = _state.update { it.copy(textQuery = text) }
+
+    fun setShowSenders(show: Boolean) = _state.update { it.copy(showSenders = show) }
+
+    /** Shows only [key]'s messages; with [selectAll] also selects all of them. */
+    fun openSender(key: String, selectAll: Boolean) = _state.update { s ->
+        val ids = if (selectAll) s.items.filter { it.senderKey == key }.map { it.sms.id } else emptyList()
+        s.copy(
+            showSenders = false,
+            senderFilter = key,
+            filter = null,
+            query = "",
+            textQuery = "",
+            selected = s.selected + ids,
+        )
+    }
+
+    fun clearSenderFilter() = _state.update { it.copy(senderFilter = null) }
 
     fun selectAllVisible(select: Boolean) = _state.update { s ->
         val ids = s.visibleItems.map { it.sms.id }.toSet()
