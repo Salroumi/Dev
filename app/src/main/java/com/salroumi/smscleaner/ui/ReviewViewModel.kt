@@ -32,6 +32,7 @@ data class UiState(
     val previousAppLabel: String? = null,
     /** Incremented each time the "make default SMS app" request returns. */
     val roleResults: Int = 0,
+    val currentDefaultLabel: String = "",
 ) {
     val visibleItems: List<ReviewItem>
         get() = if (filter == null) items else items.filter { it.verdict.category == filter }
@@ -55,6 +56,7 @@ class ReviewViewModel(app: Application) : AndroidViewModel(app) {
                 hasPermission = hasPermission,
                 isDefaultApp = DefaultSmsHelper.isDefault(app),
                 previousAppLabel = DefaultSmsHelper.previousAppLabel(app),
+                currentDefaultLabel = DefaultSmsHelper.currentDefaultLabel(app),
             )
         }
     }

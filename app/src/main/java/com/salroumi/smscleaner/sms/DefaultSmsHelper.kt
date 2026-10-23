@@ -16,8 +16,21 @@ object DefaultSmsHelper {
     private const val PREFS = "default_sms"
     private const val KEY_PREVIOUS = "previous_package"
 
-    fun isDefault(context: Context): Boolean =
-        Telephony.Sms.getDefaultSmsPackage(context) == context.packageName
+    fun isDefault(context: Context): Boolean {
+        // On Android 10+ the role is the source of truth; getDefaultSmsPackage() can
+        // return null on some devices even though the role is held.
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+            val roleManager = context.getSystemService(RoleManager::class.java)
+            if (roleManager?.isRoleHeld(RoleManager.ROLE_SMS) == true) return true
+        }
+        return Telephony.Sms.getDefaultSmsPackage(context) == context.packageName
+    }
+
+    /** Name of the app the system currently reports as the default SMS app. */
+    fun currentDefaultLabel(context: Context): String {
+        val pkg = Telephony.Sms.getDefaultSmsPackage(context) ?: return "غير معروف"
+        return labelFor(context, pkg)
+    }
 
     fun previousDefault(context: Context): String? =
         context.getSharedPreferences(PREFS, Context.MODE_PRIVATE).getString(KEY_PREVIOUS, null)
@@ -57,11 +70,13 @@ object DefaultSmsHelper {
 
     fun previousAppLabel(context: Context): String? {
         val pkg = previousDefault(context) ?: return null
-        return try {
-            val pm = context.packageManager
-            pm.getApplicationLabel(pm.getApplicationInfo(pkg, 0)).toString()
-        } catch (e: Exception) {
-            pkg
-        }
+        return labelFor(context, pkg)
+    }
+
+    private fun labelFor(context: Context, pkg: String): String = try {
+        val pm = context.packageManager
+        pm.getApplicationLabel(pm.getApplicationInfo(pkg, 0)).toString()
+    } catch (e: Exception) {
+        pkg
     }
 }
