@@ -17,8 +17,10 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Clear
 import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.Refresh
+import androidx.compose.material.icons.filled.Search
 import androidx.compose.material.icons.filled.Warning
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
@@ -32,6 +34,7 @@ import androidx.compose.material3.FilterChip
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.SnackbarHost
 import androidx.compose.material3.SnackbarHostState
@@ -62,6 +65,7 @@ class ReviewActions(
     val onScan: () -> Unit,
     val onToggle: (Long) -> Unit,
     val onFilter: (Category?) -> Unit,
+    val onQuery: (String) -> Unit,
     val onSelectAllVisible: (Boolean) -> Unit,
     val onRequestDefault: () -> Unit,
     val onDelete: () -> Unit,
@@ -120,13 +124,13 @@ fun ReviewScreen(state: UiState, actions: ReviewActions) {
                         onClick = {
                             if (state.isDefaultApp) showConfirm = true else showNeedDefault = true
                         },
-                        enabled = state.selected.isNotEmpty() && !state.loading,
+                        enabled = state.selectedVisible.isNotEmpty() && !state.loading,
                         colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.error),
                         modifier = Modifier.fillMaxWidth().padding(16.dp),
                     ) {
                         Icon(Icons.Default.Delete, contentDescription = null)
                         Spacer(Modifier.width(8.dp))
-                        Text("حذف المحدد (${state.selected.size})")
+                        Text("حذف المحدد (${state.selectedVisible.size})")
                     }
                 }
             }
@@ -191,14 +195,23 @@ fun ReviewScreen(state: UiState, actions: ReviewActions) {
     }
 
     if (showConfirm) {
-        val selectedItems = state.items.filter { it.sms.id in state.selected }
+        val selectedItems = state.selectedVisible
         val breakdown = selectedItems.groupingBy { it.verdict.category }.eachCount()
             .entries.joinToString("\n") { "• ${it.key.label}: ${it.value}" }
+        val senders = selectedItems.groupingBy { it.sms.address.ifBlank { "مجهول" } }.eachCount()
+            .entries.sortedByDescending { it.value }
+        val senderText = senders.take(5).joinToString("\n") { "• ${it.key}: ${it.value}" } +
+            if (senders.size > 5) "\n• و${senders.size - 5} مرسلين آخرين" else ""
         AlertDialog(
             onDismissRequest = { showConfirm = false },
             icon = { Icon(Icons.Default.Warning, contentDescription = null) },
             title = { Text("تأكيد الحذف") },
-            text = { Text("سيتم حذف ${selectedItems.size} رسالة نهائيًا ولا يمكن استرجاعها:\n\n$breakdown") },
+            text = {
+                Text(
+                    "سيتم حذف ${selectedItems.size} رسالة نهائيًا ولا يمكن استرجاعها.\n\n" +
+                        "حسب التصنيف:\n$breakdown\n\nحسب المرسل:\n$senderText",
+                )
+            },
             confirmButton = {
                 TextButton(onClick = {
                     showConfirm = false
@@ -256,6 +269,23 @@ private fun Results(state: UiState, actions: ReviewActions) {
             item { RestoreCard(state.previousAppLabel, actions) }
         }
         item {
+            OutlinedTextField(
+                value = state.query,
+                onValueChange = actions.onQuery,
+                modifier = Modifier.fillMaxWidth(),
+                singleLine = true,
+                placeholder = { Text("ابحث باسم المرسل أو رقمه") },
+                leadingIcon = { Icon(Icons.Default.Search, contentDescription = null) },
+                trailingIcon = {
+                    if (state.query.isNotEmpty()) {
+                        IconButton(onClick = { actions.onQuery("") }) {
+                            Icon(Icons.Default.Clear, contentDescription = "مسح البحث")
+                        }
+                    }
+                },
+            )
+        }
+        item {
             LazyRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                 item {
                     FilterChip(
@@ -278,7 +308,7 @@ private fun Results(state: UiState, actions: ReviewActions) {
             val allSelected = visible.isNotEmpty() && visible.all { it.sms.id in state.selected }
             Row(verticalAlignment = Alignment.CenterVertically) {
                 Checkbox(checked = allSelected, onCheckedChange = { actions.onSelectAllVisible(it) })
-                Text("تحديد الكل في هذه القائمة")
+                Text("تحديد الكل في هذه القائمة (${visible.size})")
             }
         }
         if (state.visibleItems.isEmpty()) {

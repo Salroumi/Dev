@@ -26,6 +26,8 @@ data class UiState(
     val items: List<ReviewItem> = emptyList(),
     val selected: Set<Long> = emptySet(),
     val filter: Category? = null,
+    /** Sender search text. */
+    val query: String = "",
     val message: String? = null,
     /** Set after a deletion so the user is reminded to restore their usual SMS app. */
     val showRestoreHint: Boolean = false,
@@ -35,7 +37,17 @@ data class UiState(
     val currentDefaultLabel: String = "",
 ) {
     val visibleItems: List<ReviewItem>
-        get() = if (filter == null) items else items.filter { it.verdict.category == filter }
+        get() {
+            val q = query.trim().lowercase()
+            return items.filter { item ->
+                (filter == null || item.verdict.category == filter) &&
+                    (q.isEmpty() || item.sms.address.lowercase().contains(q))
+            }
+        }
+
+    /** Only what is on screen gets deleted, so a filter or search never deletes hidden messages. */
+    val selectedVisible: List<ReviewItem>
+        get() = visibleItems.filter { it.sms.id in selected }
 
     val counts: Map<Category, Int>
         get() = items.groupingBy { it.verdict.category }.eachCount()
@@ -100,6 +112,8 @@ class ReviewViewModel(app: Application) : AndroidViewModel(app) {
 
     fun setFilter(category: Category?) = _state.update { it.copy(filter = category) }
 
+    fun setQuery(query: String) = _state.update { it.copy(query = query) }
+
     fun selectAllVisible(select: Boolean) = _state.update { s ->
         val ids = s.visibleItems.map { it.sms.id }.toSet()
         s.copy(selected = if (select) s.selected + ids else s.selected - ids)
@@ -107,7 +121,7 @@ class ReviewViewModel(app: Application) : AndroidViewModel(app) {
 
     /** Deletes the selected messages. Call only after the user confirmed. */
     fun deleteSelected() {
-        val ids = _state.value.selected
+        val ids = _state.value.selectedVisible.map { it.sms.id }.toSet()
         if (ids.isEmpty()) return
         _state.update { it.copy(loading = true) }
         viewModelScope.launch {
@@ -119,7 +133,7 @@ class ReviewViewModel(app: Application) : AndroidViewModel(app) {
                     s.copy(
                         loading = false,
                         items = items,
-                        selected = emptySet(),
+                        selected = s.selected - ids,
                         showRestoreHint = deleted > 0,
                         message = if (deleted == ids.size) "تم حذف $deleted رسالة"
                         else "تم حذف $deleted من ${ids.size} رسالة فقط. تأكد أن التطبيق هو تطبيق الرسائل الافتراضي",

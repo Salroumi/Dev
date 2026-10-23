@@ -44,6 +44,7 @@ class MainActivity : ComponentActivity() {
             onScan = viewModel::scan,
             onToggle = viewModel::toggle,
             onFilter = viewModel::setFilter,
+            onQuery = viewModel::setQuery,
             onSelectAllVisible = viewModel::selectAllVisible,
             onRequestDefault = { launchSafely(DefaultSmsHelper.requestDefaultIntent(this)) },
             onDelete = viewModel::deleteSelected,
