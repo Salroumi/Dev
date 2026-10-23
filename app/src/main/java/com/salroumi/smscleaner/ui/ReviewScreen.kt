@@ -66,6 +66,7 @@ class ReviewActions(
     val onToggle: (Long) -> Unit,
     val onFilter: (Category?) -> Unit,
     val onQuery: (String) -> Unit,
+    val onTextQuery: (String) -> Unit,
     val onSelectAllVisible: (Boolean) -> Unit,
     val onRequestDefault: () -> Unit,
     val onDelete: () -> Unit,
@@ -279,6 +280,23 @@ private fun Results(state: UiState, actions: ReviewActions) {
                 trailingIcon = {
                     if (state.query.isNotEmpty()) {
                         IconButton(onClick = { actions.onQuery("") }) {
+                            Icon(Icons.Default.Clear, contentDescription = "مسح البحث")
+                        }
+                    }
+                },
+            )
+        }
+        item {
+            OutlinedTextField(
+                value = state.textQuery,
+                onValueChange = actions.onTextQuery,
+                modifier = Modifier.fillMaxWidth(),
+                singleLine = true,
+                placeholder = { Text("ابحث عن نص داخل الرسالة") },
+                leadingIcon = { Icon(Icons.Default.Search, contentDescription = null) },
+                trailingIcon = {
+                    if (state.textQuery.isNotEmpty()) {
+                        IconButton(onClick = { actions.onTextQuery("") }) {
                             Icon(Icons.Default.Clear, contentDescription = "مسح البحث")
                         }
                     }

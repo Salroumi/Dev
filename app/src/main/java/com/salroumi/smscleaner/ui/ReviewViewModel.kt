@@ -16,7 +16,10 @@ import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 
-data class ReviewItem(val sms: SmsRecord, val verdict: Verdict)
+data class ReviewItem(val sms: SmsRecord, val verdict: Verdict) {
+    /** Normalised once so text search ignores Arabic letter/digit variants. */
+    val searchableBody: String = SmsAnalyzer.normalize(sms.body)
+}
 
 data class UiState(
     val hasPermission: Boolean = false,
@@ -28,6 +31,8 @@ data class UiState(
     val filter: Category? = null,
     /** Sender search text. */
     val query: String = "",
+    /** Message-text search. */
+    val textQuery: String = "",
     val message: String? = null,
     /** Set after a deletion so the user is reminded to restore their usual SMS app. */
     val showRestoreHint: Boolean = false,
@@ -39,9 +44,11 @@ data class UiState(
     val visibleItems: List<ReviewItem>
         get() {
             val q = query.trim().lowercase()
+            val t = SmsAnalyzer.normalize(textQuery)
             return items.filter { item ->
                 (filter == null || item.verdict.category == filter) &&
-                    (q.isEmpty() || item.sms.address.lowercase().contains(q))
+                    (q.isEmpty() || item.sms.address.lowercase().contains(q)) &&
+                    (t.isEmpty() || item.searchableBody.contains(t))
             }
         }
 
@@ -113,6 +120,8 @@ class ReviewViewModel(app: Application) : AndroidViewModel(app) {
     fun setFilter(category: Category?) = _state.update { it.copy(filter = category) }
 
     fun setQuery(query: String) = _state.update { it.copy(query = query) }
+
+    fun setTextQuery(text: String) = _state.update { it.copy(textQuery = text) }
 
     fun selectAllVisible(select: Boolean) = _state.update { s ->
         val ids = s.visibleItems.map { it.sms.id }.toSet()
