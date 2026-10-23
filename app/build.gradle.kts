@@ -11,8 +11,10 @@ android {
         applicationId = "com.salroumi.smscleaner"
         minSdk = 23
         targetSdk = 34
-        versionCode = 1
-        versionName = "1.0"
+        // CI run number, so the app shows which build is installed.
+        val build = System.getenv("GITHUB_RUN_NUMBER")?.toIntOrNull() ?: 1
+        versionCode = build
+        versionName = build.toString()
     }
 
     // Fixed debug key (committed on purpose) so every CI build has the same signature
@@ -42,6 +44,7 @@ android {
     }
     buildFeatures {
         compose = true
+        buildConfig = true
     }
     composeOptions {
         kotlinCompilerExtensionVersion = "1.5.14"

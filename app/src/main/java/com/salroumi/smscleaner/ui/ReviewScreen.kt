@@ -56,6 +56,7 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import com.salroumi.smscleaner.BuildConfig
 import com.salroumi.smscleaner.analysis.Category
 import java.text.DateFormat
 import java.util.Date
@@ -268,6 +269,18 @@ private fun Results(state: UiState, actions: ReviewActions) {
     ) {
         if (state.showRestoreHint && state.isDefaultApp) {
             item { RestoreCard(state.previousAppLabel, actions) }
+        }
+        item {
+            val all = state.items
+            val received = all.count { !it.sms.sent && !it.sms.isMms }
+            val sent = all.count { it.sms.sent && !it.sms.isMms }
+            val mms = all.count { it.sms.isMms }
+            Text(
+                "الإصدار ${BuildConfig.VERSION_NAME} • تم فحص ${all.size} رسالة " +
+                    "(واردة $received، مرسلة $sent، وسائط $mms)",
+                style = MaterialTheme.typography.labelSmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
         }
         item {
             OutlinedTextField(
