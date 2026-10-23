@@ -79,4 +79,16 @@ class SmsAnalyzerTest {
     fun normalizeConvertsArabicDigitsAndLetters() {
         assertEquals("رمز 1234 ابشر", SmsAnalyzer.normalize("رمز ١٢٣٤   أبشر"))
     }
+
+    @Test
+    fun sentMessagesAreNeverSuggested() {
+        val messages = listOf(
+            SmsRecord(1, "0551234567", "عروض خصم 50% bit.ly/x", now - 50 * hour, sent = true),
+            SmsRecord(2, "0551234567", "عروض خصم 50% bit.ly/x", now - 60 * hour, sent = true),
+        )
+        val result = analyzer.analyze(messages, now)
+        assertEquals(Category.SENT, result.getValue(1).category)
+        assertEquals(Category.SENT, result.getValue(2).category)
+        assertFalse(result.getValue(2).suggestDelete)
+    }
 }

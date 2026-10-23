@@ -10,6 +10,7 @@ import com.salroumi.smscleaner.analysis.Verdict
 import com.salroumi.smscleaner.sms.DefaultSmsHelper
 import com.salroumi.smscleaner.sms.SmsRepository
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.Job
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.update
@@ -19,6 +20,12 @@ import kotlinx.coroutines.withContext
 data class ReviewItem(val sms: SmsRecord, val verdict: Verdict) {
     /** Normalised once so text search ignores Arabic letter/digit variants. */
     val searchableBody: String = SmsAnalyzer.normalize(sms.body)
+    private val searchableSender: String = SmsAnalyzer.normalize(sms.address + " " + sms.contactName.orEmpty())
+    private val senderDigits: String = sms.address.filter { it.isDigit() }
+
+    fun matchesSender(query: String, queryDigits: String?): Boolean =
+        searchableSender.contains(query) ||
+            (!queryDigits.isNullOrEmpty() && senderDigits.contains(queryDigits))
 }
 
 data class UiState(
@@ -43,11 +50,17 @@ data class UiState(
 ) {
     val visibleItems: List<ReviewItem>
         get() {
-            val q = query.trim().lowercase()
+            val q = SmsAnalyzer.normalize(query)
+            // Phone numbers: "0551234567" should match "+966551234567", so compare digits without leading zeros.
+            val qDigits = if (q.isNotEmpty() && q.all { it.isDigit() || it == '+' || it == ' ' }) {
+                q.filter { it.isDigit() }.trimStart('0')
+            } else {
+                null
+            }
             val t = SmsAnalyzer.normalize(textQuery)
             return items.filter { item ->
                 (filter == null || item.verdict.category == filter) &&
-                    (q.isEmpty() || item.sms.address.lowercase().contains(q)) &&
+                    (q.isEmpty() || item.matchesSender(q, qDigits)) &&
                     (t.isEmpty() || item.searchableBody.contains(t))
             }
         }
@@ -65,6 +78,7 @@ class ReviewViewModel(app: Application) : AndroidViewModel(app) {
     private val repository = SmsRepository(app)
     private val analyzer = SmsAnalyzer()
 
+    private var scanJob: Job? = null
     private val _state = MutableStateFlow(UiState())
     val state: StateFlow<UiState> = _state
 
@@ -85,19 +99,33 @@ class ReviewViewModel(app: Application) : AndroidViewModel(app) {
         _state.update { it.copy(roleResults = it.roleResults + 1) }
     }
 
-    fun scan() {
-        if (_state.value.loading) return
-        _state.update { it.copy(loading = true, message = null) }
-        viewModelScope.launch {
+    /**
+     * Reads and analyses all messages. A [silent] refresh (e.g. when returning to the app)
+     * keeps the user's selection and only pre-selects suggestions for new messages.
+     */
+    fun scan(silent: Boolean = false) {
+        if (_state.value.loading || scanJob?.isActive == true) return
+        if (silent && !_state.value.scanned) return
+        _state.update { it.copy(loading = !silent, message = null) }
+        scanJob = viewModelScope.launch {
             try {
                 val items = withContext(Dispatchers.IO) { loadAndAnalyze() }
                 _state.update { s ->
+                    val suggested = items.filter { it.verdict.suggestDelete }.map { it.sms.id }.toSet()
+                    val selected = if (silent) {
+                        val known = s.items.map { it.sms.id }.toSet()
+                        val ids = items.map { it.sms.id }.toSet()
+                        (s.selected intersect ids) + (suggested - known)
+                    } else {
+                        suggested
+                    }
                     s.copy(
                         loading = false,
                         scanned = true,
                         items = items,
-                        selected = items.filter { it.verdict.suggestDelete }.map { it.sms.id }.toSet(),
-                        message = "تمت مراجعة ${items.size} رسالة، يُقترح حذف ${items.count { it.verdict.suggestDelete }}",
+                        selected = selected,
+                        message = if (silent) null
+                        else "تمت مراجعة ${items.size} رسالة، يُقترح حذف ${suggested.size}",
                     )
                 }
             } catch (e: Exception) {
@@ -107,7 +135,7 @@ class ReviewViewModel(app: Application) : AndroidViewModel(app) {
     }
 
     private fun loadAndAnalyze(): List<ReviewItem> {
-        val messages = repository.loadInbox()
+        val messages = repository.loadAll()
         val verdicts = analyzer.analyze(messages)
         return messages.map { ReviewItem(it, verdicts.getValue(it.id)) }
             .sortedWith(compareBy<ReviewItem> { it.verdict.category.ordinal }.thenByDescending { it.sms.date })

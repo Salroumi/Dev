@@ -9,6 +9,10 @@ data class SmsRecord(
     val body: String,
     val date: Long,
     val fromContact: Boolean = false,
+    val contactName: String? = null,
+    /** True for messages the user sent (never suggested for deletion). */
+    val sent: Boolean = false,
+    val isMms: Boolean = false,
 )
 
 enum class Category(val label: String) {
@@ -19,6 +23,7 @@ enum class Category(val label: String) {
     PROMOTION("إعلانية"),
     TRANSACTION("معاملة بنكية"),
     PERSONAL("شخصية"),
+    SENT("مرسلة منك"),
     OTHER("أخرى"),
 }
 
@@ -49,6 +54,10 @@ class SmsAnalyzer(private val settings: AnalyzerSettings = AnalyzerSettings()) {
         val seen = HashSet<String>()
         val result = LinkedHashMap<Long, Verdict>()
         for (sms in messages.sortedByDescending { it.date }) {
+            if (sms.sent) {
+                result[sms.id] = Verdict(Category.SENT, false, listOf("رسالة أرسلتها أنت"))
+                continue
+            }
             val key = sms.address.filter { !it.isWhitespace() }.lowercase() + "|" + normalize(sms.body)
             val isDuplicate = !seen.add(key)
             result[sms.id] = analyzeOne(sms, now, isDuplicate)

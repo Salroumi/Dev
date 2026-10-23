@@ -199,7 +199,7 @@ fun ReviewScreen(state: UiState, actions: ReviewActions) {
         val selectedItems = state.selectedVisible
         val breakdown = selectedItems.groupingBy { it.verdict.category }.eachCount()
             .entries.joinToString("\n") { "• ${it.key.label}: ${it.value}" }
-        val senders = selectedItems.groupingBy { it.sms.address.ifBlank { "مجهول" } }.eachCount()
+        val senders = selectedItems.groupingBy { it.sms.contactName ?: it.sms.address.ifBlank { "مجهول" } }.eachCount()
             .entries.sortedByDescending { it.value }
         val senderText = senders.take(5).joinToString("\n") { "• ${it.key}: ${it.value}" } +
             if (senders.size > 5) "\n• و${senders.size - 5} مرسلين آخرين" else ""
@@ -330,7 +330,16 @@ private fun Results(state: UiState, actions: ReviewActions) {
             }
         }
         if (state.visibleItems.isEmpty()) {
-            item { Text("لا توجد رسائل هنا ✨", Modifier.padding(24.dp)) }
+            item {
+                Column(Modifier.padding(24.dp)) {
+                    Text("لا توجد رسائل هنا ✨")
+                    val filter = state.filter
+                    if (filter != null) {
+                        Text("البحث يتم داخل تصنيف «${filter.label}» فقط", style = MaterialTheme.typography.bodySmall)
+                        TextButton(onClick = { actions.onFilter(null) }) { Text("ابحث في كل التصنيفات") }
+                    }
+                }
+            }
         }
         items(state.visibleItems, key = { it.sms.id }) { item ->
             MessageCard(item, selected = item.sms.id in state.selected, onToggle = { actions.onToggle(item.sms.id) })
@@ -368,7 +377,7 @@ private fun MessageCard(item: ReviewItem, selected: Boolean, onToggle: () -> Uni
             Column(Modifier.weight(1f)) {
                 Row(verticalAlignment = Alignment.CenterVertically) {
                     Text(
-                        item.sms.address.ifBlank { "مجهول" },
+                        item.sms.contactName ?: item.sms.address.ifBlank { "مجهول" },
                         fontWeight = FontWeight.Bold,
                         modifier = Modifier.weight(1f),
                         maxLines = 1,
@@ -389,7 +398,11 @@ private fun MessageCard(item: ReviewItem, selected: Boolean, onToggle: () -> Uni
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
                 Spacer(Modifier.height(4.dp))
-                Text(item.sms.body, maxLines = 4, overflow = TextOverflow.Ellipsis)
+                Text(
+                    item.sms.body.ifBlank { if (item.sms.isMms) "(رسالة وسائط بدون نص)" else "(فارغة)" },
+                    maxLines = 4,
+                    overflow = TextOverflow.Ellipsis,
+                )
                 Spacer(Modifier.height(6.dp))
                 item.verdict.reasons.forEach { reason ->
                     Row(verticalAlignment = Alignment.CenterVertically) {
@@ -421,6 +434,7 @@ private fun categoryColors(category: Category): Pair<Color, Color> {
         Category.OTP_RECENT -> Color(0xFF1E88E5) to surface
         Category.TRANSACTION -> Color(0xFF2E7D32) to surface
         Category.PERSONAL -> Color(0xFF00897B) to surface
+        Category.SENT -> Color(0xFF3949AB) to surface
         Category.OTHER -> Color(0xFF546E7A) to surface
     }
 }

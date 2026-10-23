@@ -74,6 +74,8 @@ class MainActivity : ComponentActivity() {
         super.onResume()
         // The default SMS app may have changed in system settings while we were away.
         viewModel.refreshStatus(hasSmsPermission())
+        // Pick up messages that arrived or were deleted elsewhere while we were away.
+        if (hasSmsPermission()) viewModel.scan(silent = true)
     }
 
     private fun hasSmsPermission() =
