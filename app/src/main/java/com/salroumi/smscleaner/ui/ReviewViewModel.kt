@@ -16,10 +16,12 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
+import java.util.Calendar
 
 data class ReviewItem(val sms: SmsRecord, val verdict: Verdict) {
     /** Normalised once so text search ignores Arabic letter/digit variants. */
     val searchableBody: String = SmsAnalyzer.normalize(sms.body)
+    val year: Int = Calendar.getInstance().apply { timeInMillis = sms.date }.get(Calendar.YEAR)
     private val searchableSender: String = SmsAnalyzer.normalize(sms.address + " " + sms.contactName.orEmpty())
     private val senderDigits: String = sms.address.filter { it.isDigit() }
 
@@ -75,6 +77,8 @@ data class UiState(
     val textQuery: String = "",
     /** When set, only messages from this sender (see [senderKeyOf]) are listed. */
     val senderFilter: String? = null,
+    /** When set, only messages from this calendar year are listed and selected. */
+    val year: Int? = null,
     val showSenders: Boolean = false,
     val message: String? = null,
     /** Set after a deletion so the user is reminded to restore their usual SMS app. */
@@ -96,6 +100,7 @@ data class UiState(
             val t = SmsAnalyzer.normalize(textQuery)
             return items.filter { item ->
                 (filter == null || item.verdict.category == filter) &&
+                    (year == null || item.year == year) &&
                     (senderFilter == null || item.senderKey == senderFilter) &&
                     (q.isEmpty() || item.matchesSender(q, qDigits)) &&
                     (t.isEmpty() || item.searchableBody.contains(t))
@@ -106,8 +111,16 @@ data class UiState(
     val selectedVisible: List<ReviewItem>
         get() = visibleItems.filter { it.sms.id in selected }
 
+    /** Messages in the selected year (all messages when no year is selected). */
+    val itemsInYear: List<ReviewItem>
+        get() = if (year == null) items else items.filter { it.year == year }
+
     val counts: Map<Category, Int>
-        get() = items.groupingBy { it.verdict.category }.eachCount()
+        get() = itemsInYear.groupingBy { it.verdict.category }.eachCount()
+
+    /** Years that have messages, newest first, with message counts. */
+    val years: List<Pair<Int, Int>>
+        get() = items.groupingBy { it.year }.eachCount().toList().sortedByDescending { it.first }
 }
 
 class ReviewViewModel(app: Application) : AndroidViewModel(app) {
@@ -192,7 +205,7 @@ class ReviewViewModel(app: Application) : AndroidViewModel(app) {
 
     /** Shows only [key]'s messages; with [selectAll] also selects all of them. */
     fun openSender(key: String, selectAll: Boolean) = _state.update { s ->
-        val ids = if (selectAll) s.items.filter { it.senderKey == key }.map { it.sms.id } else emptyList()
+        val ids = if (selectAll) s.itemsInYear.filter { it.senderKey == key }.map { it.sms.id } else emptyList()
         s.copy(
             showSenders = false,
             senderFilter = key,
@@ -202,6 +215,8 @@ class ReviewViewModel(app: Application) : AndroidViewModel(app) {
             selected = s.selected + ids,
         )
     }
+
+    fun setYear(year: Int?) = _state.update { it.copy(year = year) }
 
     fun clearSenderFilter() = _state.update { it.copy(senderFilter = null) }
 

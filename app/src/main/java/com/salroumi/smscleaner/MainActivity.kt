@@ -49,6 +49,7 @@ class MainActivity : ComponentActivity() {
             onShowSenders = viewModel::setShowSenders,
             onOpenSender = viewModel::openSender,
             onClearSender = viewModel::clearSenderFilter,
+            onYear = viewModel::setYear,
             onSelectAllVisible = viewModel::selectAllVisible,
             onRequestDefault = { launchSafely(DefaultSmsHelper.requestDefaultIntent(this)) },
             onDelete = viewModel::deleteSelected,

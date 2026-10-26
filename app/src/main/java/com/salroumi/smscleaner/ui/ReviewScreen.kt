@@ -74,6 +74,7 @@ class ReviewActions(
     val onShowSenders: (Boolean) -> Unit,
     val onOpenSender: (key: String, selectAll: Boolean) -> Unit,
     val onClearSender: () -> Unit,
+    val onYear: (Int?) -> Unit,
     val onSelectAllVisible: (Boolean) -> Unit,
     val onRequestDefault: () -> Unit,
     val onDelete: () -> Unit,
@@ -298,7 +299,7 @@ private fun Results(state: UiState, actions: ReviewActions, onDeleteSender: (Str
 
 @Composable
 private fun SendersList(state: UiState, actions: ReviewActions, onDeleteSender: (String) -> Unit) {
-    val senders = remember(state.items) { summarizeSenders(state.items) }
+    val senders = remember(state.items, state.year) { summarizeSenders(state.itemsInYear) }
     var search by rememberSaveable { mutableStateOf("") }
     val q = SmsAnalyzer.normalize(search)
     val shown = if (q.isEmpty()) senders else senders.filter {
@@ -318,9 +319,10 @@ private fun SendersList(state: UiState, actions: ReviewActions, onDeleteSender: 
                 leadingIcon = { Icon(Icons.Default.Search, contentDescription = null) },
             )
         }
+        item { YearChips(state, actions) }
         item {
             Text(
-                "${senders.size} مرسل • مرتبون حسب عدد الرسائل",
+                "${senders.size} مرسل" + (state.year?.let { " في $it" } ?: "") + " • مرتبون حسب عدد الرسائل",
                 style = MaterialTheme.typography.labelSmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
@@ -362,6 +364,29 @@ private fun SendersList(state: UiState, actions: ReviewActions, onDeleteSender: 
                     }
                 }
             }
+        }
+    }
+}
+
+/** Year filter shared by the messages and senders tabs. */
+@Composable
+private fun YearChips(state: UiState, actions: ReviewActions) {
+    val years = state.years
+    if (years.size < 2) return
+    LazyRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+        item {
+            FilterChip(
+                selected = state.year == null,
+                onClick = { actions.onYear(null) },
+                label = { Text("كل السنوات") },
+            )
+        }
+        items(years, key = { it.first }) { (year, count) ->
+            FilterChip(
+                selected = state.year == year,
+                onClick = { actions.onYear(if (state.year == year) null else year) },
+                label = { Text("$year ($count)") },
+            )
         }
     }
 }
@@ -440,7 +465,7 @@ private fun MessagesList(state: UiState, actions: ReviewActions) {
                     FilterChip(
                         selected = state.filter == null,
                         onClick = { actions.onFilter(null) },
-                        label = { Text("الكل (${state.items.size})") },
+                        label = { Text("الكل (${state.itemsInYear.size})") },
                     )
                 }
                 items(Category.entries.filter { (counts[it] ?: 0) > 0 }) { category ->
@@ -452,6 +477,7 @@ private fun MessagesList(state: UiState, actions: ReviewActions) {
                 }
             }
         }
+        item { YearChips(state, actions) }
         item {
             val visible = state.visibleItems
             val allSelected = visible.isNotEmpty() && visible.all { it.sms.id in state.selected }
@@ -468,6 +494,11 @@ private fun MessagesList(state: UiState, actions: ReviewActions) {
                     if (filter != null) {
                         Text("البحث يتم داخل تصنيف «${filter.label}» فقط", style = MaterialTheme.typography.bodySmall)
                         TextButton(onClick = { actions.onFilter(null) }) { Text("ابحث في كل التصنيفات") }
+                    }
+                    val year = state.year
+                    if (year != null) {
+                        Text("البحث يتم في رسائل سنة $year فقط", style = MaterialTheme.typography.bodySmall)
+                        TextButton(onClick = { actions.onYear(null) }) { Text("ابحث في كل السنوات") }
                     }
                 }
             }
