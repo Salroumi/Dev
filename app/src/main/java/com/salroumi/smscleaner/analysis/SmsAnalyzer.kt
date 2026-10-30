@@ -34,6 +34,8 @@ data class Verdict(
     val reasons: List<String>,
     /** 0 = safe; higher means more phishing indicators were found. */
     val riskScore: Int = 0,
+    /** Amount, type and merchant for bank messages that could be read. */
+    val transaction: Transaction? = null,
 )
 
 data class AnalyzerSettings(
@@ -80,6 +82,20 @@ class SmsAnalyzer(private val settings: AnalyzerSettings = AnalyzerSettings()) {
 
         if (isDuplicate) {
             return Verdict(Category.DUPLICATE, true, listOf("نسخة مكررة من رسالة أحدث من نفس المرسل"), risk.score)
+        }
+
+        // Before the OTP check: a card's last 4 digits plus a word like "shopping" (contains "pin")
+        // would otherwise look like an expired code and be suggested for deletion.
+        if (!sms.fromContact) {
+            TransactionParser.parse(sms.body)?.let { tx ->
+                return Verdict(
+                    Category.TRANSACTION,
+                    false,
+                    listOf("عملية مالية: ${tx.type.label} • ${tx.category.label}"),
+                    risk.score,
+                    tx,
+                )
+            }
         }
 
         if (isOtp(text)) {

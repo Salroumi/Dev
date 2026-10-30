@@ -71,7 +71,7 @@ class ReviewActions(
     val onFilter: (Category?) -> Unit,
     val onQuery: (String) -> Unit,
     val onTextQuery: (String) -> Unit,
-    val onShowSenders: (Boolean) -> Unit,
+    val onTab: (ResultTab) -> Unit,
     val onOpenSender: (key: String, selectAll: Boolean) -> Unit,
     val onClearSender: () -> Unit,
     val onYear: (Int?) -> Unit,
@@ -127,7 +127,7 @@ fun ReviewScreen(state: UiState, actions: ReviewActions) {
         },
         snackbarHost = { SnackbarHost(snackbar) },
         bottomBar = {
-            if (state.scanned && state.items.isNotEmpty() && !state.showSenders) {
+            if (state.scanned && state.items.isNotEmpty() && state.tab == ResultTab.MESSAGES) {
                 Surface(shadowElevation = 8.dp) {
                     Button(
                         onClick = {
@@ -253,7 +253,8 @@ private fun PermissionPrompt(onGrant: () -> Unit) {
 private fun StartPrompt(onScan: () -> Unit) {
     CenteredMessage(
         title = "جاهز للفحص",
-        body = "سيتم فحص الرسائل الواردة وتحديد: الرسائل المشبوهة، المكررة، رموز التحقق القديمة، والإعلانات. لن يُحذف شيء قبل تأكيدك.",
+        body = "سيتم فحص الرسائل الواردة وتحديد: الرسائل المشبوهة، المكررة، رموز التحقق القديمة، والإعلانات، " +
+            "واستخراج العمليات المالية من رسائل البنوك وتصنيفها. لن يُحذف شيء قبل تأكيدك.",
         button = "ابدأ الفحص",
         onClick = onScan,
     )
@@ -277,22 +278,19 @@ private fun CenteredMessage(title: String, body: String, button: String, onClick
 @Composable
 private fun Results(state: UiState, actions: ReviewActions, onDeleteSender: (String) -> Unit) {
     Column(Modifier.fillMaxSize()) {
-        TabRow(selectedTabIndex = if (state.showSenders) 1 else 0) {
-            Tab(
-                selected = !state.showSenders,
-                onClick = { actions.onShowSenders(false) },
-                text = { Text("الرسائل") },
-            )
-            Tab(
-                selected = state.showSenders,
-                onClick = { actions.onShowSenders(true) },
-                text = { Text("المرسلون") },
-            )
+        TabRow(selectedTabIndex = state.tab.ordinal) {
+            ResultTab.entries.forEach { tab ->
+                Tab(
+                    selected = state.tab == tab,
+                    onClick = { actions.onTab(tab) },
+                    text = { Text(tab.label, maxLines = 1) },
+                )
+            }
         }
-        if (state.showSenders) {
-            SendersList(state, actions, onDeleteSender)
-        } else {
-            MessagesList(state, actions)
+        when (state.tab) {
+            ResultTab.MESSAGES -> MessagesList(state, actions)
+            ResultTab.SENDERS -> SendersList(state, actions, onDeleteSender)
+            ResultTab.TRANSACTIONS -> TransactionsList(state.items)
         }
     }
 }

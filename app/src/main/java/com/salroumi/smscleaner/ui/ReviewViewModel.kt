@@ -63,6 +63,12 @@ fun summarizeSenders(items: List<ReviewItem>): List<SenderSummary> =
         )
     }.sortedWith(compareByDescending<SenderSummary> { it.total }.thenByDescending { it.lastDate })
 
+enum class ResultTab(val label: String) {
+    MESSAGES("الرسائل"),
+    SENDERS("المرسلون"),
+    TRANSACTIONS("العمليات المالية"),
+}
+
 data class UiState(
     val hasPermission: Boolean = false,
     val isDefaultApp: Boolean = false,
@@ -79,7 +85,7 @@ data class UiState(
     val senderFilter: String? = null,
     /** When set, only messages from this calendar year are listed and selected. */
     val year: Int? = null,
-    val showSenders: Boolean = false,
+    val tab: ResultTab = ResultTab.MESSAGES,
     val message: String? = null,
     /** Set after a deletion so the user is reminded to restore their usual SMS app. */
     val showRestoreHint: Boolean = false,
@@ -201,13 +207,13 @@ class ReviewViewModel(app: Application) : AndroidViewModel(app) {
 
     fun setTextQuery(text: String) = _state.update { it.copy(textQuery = text) }
 
-    fun setShowSenders(show: Boolean) = _state.update { it.copy(showSenders = show) }
+    fun setTab(tab: ResultTab) = _state.update { it.copy(tab = tab) }
 
     /** Shows only [key]'s messages; with [selectAll] also selects all of them. */
     fun openSender(key: String, selectAll: Boolean) = _state.update { s ->
         val ids = if (selectAll) s.itemsInYear.filter { it.senderKey == key }.map { it.sms.id } else emptyList()
         s.copy(
-            showSenders = false,
+            tab = ResultTab.MESSAGES,
             senderFilter = key,
             filter = null,
             query = "",

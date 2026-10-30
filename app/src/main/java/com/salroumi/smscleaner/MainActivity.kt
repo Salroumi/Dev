@@ -46,7 +46,7 @@ class MainActivity : ComponentActivity() {
             onFilter = viewModel::setFilter,
             onQuery = viewModel::setQuery,
             onTextQuery = viewModel::setTextQuery,
-            onShowSenders = viewModel::setShowSenders,
+            onTab = viewModel::setTab,
             onOpenSender = viewModel::openSender,
             onClearSender = viewModel::clearSenderFilter,
             onYear = viewModel::setYear,
