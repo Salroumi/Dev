@@ -61,6 +61,8 @@ import androidx.compose.ui.unit.dp
 import com.salroumi.smscleaner.BuildConfig
 import com.salroumi.smscleaner.analysis.Category
 import com.salroumi.smscleaner.analysis.SmsAnalyzer
+import com.salroumi.smscleaner.analysis.SpendCategory
+import com.salroumi.smscleaner.analysis.TxEntry
 import java.text.DateFormat
 import java.util.Date
 
@@ -82,6 +84,8 @@ class ReviewActions(
     val onDismissRestore: () -> Unit,
     val onOpenAppSettings: () -> Unit,
     val onMessageShown: () -> Unit,
+    val onSetCategory: (id: Long, counterparty: String?, category: SpendCategory, forMerchant: Boolean) -> Unit,
+    val onExport: (fileName: String, entries: List<TxEntry>) -> Unit,
 )
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -290,7 +294,7 @@ private fun Results(state: UiState, actions: ReviewActions, onDeleteSender: (Str
         when (state.tab) {
             ResultTab.MESSAGES -> MessagesList(state, actions)
             ResultTab.SENDERS -> SendersList(state, actions, onDeleteSender)
-            ResultTab.TRANSACTIONS -> TransactionsList(state.items)
+            ResultTab.TRANSACTIONS -> TransactionsList(state.items, state.categoryRules, actions)
         }
     }
 }

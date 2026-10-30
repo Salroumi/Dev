@@ -1,11 +1,18 @@
 package com.salroumi.smscleaner.ui
 
 import android.app.Application
+import android.net.Uri
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
 import com.salroumi.smscleaner.analysis.Category
+import com.salroumi.smscleaner.analysis.CategoryRules
 import com.salroumi.smscleaner.analysis.SmsAnalyzer
 import com.salroumi.smscleaner.analysis.SmsRecord
+import com.salroumi.smscleaner.analysis.SpendCategory
+import com.salroumi.smscleaner.analysis.TxEntry
+import com.salroumi.smscleaner.analysis.merchantKey
+import com.salroumi.smscleaner.analysis.transactionsCsv
+import com.salroumi.smscleaner.data.CategoryStore
 import com.salroumi.smscleaner.analysis.Verdict
 import com.salroumi.smscleaner.sms.DefaultSmsHelper
 import com.salroumi.smscleaner.sms.SmsRepository
@@ -86,6 +93,8 @@ data class UiState(
     /** When set, only messages from this calendar year are listed and selected. */
     val year: Int? = null,
     val tab: ResultTab = ResultTab.MESSAGES,
+    /** Transaction categories the user changed by hand. */
+    val categoryRules: CategoryRules = CategoryRules(),
     val message: String? = null,
     /** Set after a deletion so the user is reminded to restore their usual SMS app. */
     val showRestoreHint: Boolean = false,
@@ -133,10 +142,14 @@ class ReviewViewModel(app: Application) : AndroidViewModel(app) {
 
     private val repository = SmsRepository(app)
     private val analyzer = SmsAnalyzer()
+    private val categoryStore = CategoryStore(app)
 
     private var scanJob: Job? = null
-    private val _state = MutableStateFlow(UiState())
+    private val _state = MutableStateFlow(UiState(categoryRules = categoryStore.load()))
     val state: StateFlow<UiState> = _state
+
+    /** Transactions waiting for the user to pick where to save the CSV file. */
+    private var pendingExport: List<TxEntry> = emptyList()
 
     fun refreshStatus(hasPermission: Boolean) {
         val app = getApplication<Application>()
@@ -256,6 +269,50 @@ class ReviewViewModel(app: Application) : AndroidViewModel(app) {
             } catch (e: Exception) {
                 _state.update { it.copy(loading = false, message = "فشل الحذف: ${e.message}") }
             }
+        }
+    }
+
+    /**
+     * Sets the spending category of a transaction. With [forMerchant] it also applies to every
+     * past and future transaction of the same merchant.
+     */
+    fun setCategory(id: Long, counterparty: String?, category: SpendCategory, forMerchant: Boolean) {
+        _state.update { s ->
+            val rules = s.categoryRules
+            val updated = if (forMerchant && counterparty != null) {
+                rules.copy(
+                    byMerchant = rules.byMerchant + (merchantKey(counterparty) to category),
+                    byMessage = rules.byMessage - id,
+                )
+            } else {
+                rules.copy(byMessage = rules.byMessage + (id to category))
+            }
+            categoryStore.save(updated)
+            s.copy(categoryRules = updated, message = "تم تغيير الفئة إلى «${category.label}»")
+        }
+    }
+
+    fun prepareExport(entries: List<TxEntry>) {
+        pendingExport = entries
+    }
+
+    /** Writes the transactions chosen in [prepareExport] to the file the user picked. */
+    fun writeExport(uri: Uri?) {
+        val entries = pendingExport
+        pendingExport = emptyList()
+        if (uri == null || entries.isEmpty()) return
+        viewModelScope.launch {
+            val message = try {
+                withContext(Dispatchers.IO) {
+                    val out = getApplication<Application>().contentResolver.openOutputStream(uri)
+                        ?: error("تعذّر فتح الملف")
+                    out.use { it.write(transactionsCsv(entries).toByteArray(Charsets.UTF_8)) }
+                }
+                "تم تصدير ${entries.size} عملية"
+            } catch (e: Exception) {
+                "فشل التصدير: ${e.message}"
+            }
+            _state.update { it.copy(message = message) }
         }
     }
 

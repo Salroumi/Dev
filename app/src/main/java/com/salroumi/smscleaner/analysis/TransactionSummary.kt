@@ -14,13 +14,15 @@ data class TransactionSummary(
     val net: Double get() = income - expenses
 }
 
-fun summarizeTransactions(transactions: List<Transaction>): TransactionSummary {
+/** Totals in [currency], or in the most common currency when it is null. */
+fun summarizeTransactions(transactions: List<Transaction>, currency: String? = null): TransactionSummary {
     val completed = transactions.filter { it.type.flow != Flow.NONE }
-    val currency = completed.groupingBy { it.currency }.eachCount().maxByOrNull { it.value }?.key ?: "SAR"
-    val inCurrency = completed.filter { it.currency == currency }
+    val main = currency
+        ?: completed.groupingBy { it.currency }.eachCount().maxByOrNull { it.value }?.key ?: "SAR"
+    val inCurrency = completed.filter { it.currency == main }
     val spending = inCurrency.filter { it.type.flow == Flow.OUT }
     return TransactionSummary(
-        currency = currency,
+        currency = main,
         income = inCurrency.filter { it.type.flow == Flow.IN }.sumOf { it.amount },
         expenses = spending.sumOf { it.amount },
         byCategory = spending.groupBy { it.category }

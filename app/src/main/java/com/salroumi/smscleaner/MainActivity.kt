@@ -31,6 +31,11 @@ class MainActivity : ComponentActivity() {
             if (hasSmsPermission()) viewModel.scan()
         }
 
+    private val exportLauncher =
+        registerForActivityResult(ActivityResultContracts.CreateDocument("text/csv")) { uri ->
+            viewModel.writeExport(uri)
+        }
+
     private val roleLauncher =
         registerForActivityResult(ActivityResultContracts.StartActivityForResult()) {
             viewModel.onRoleResult(hasSmsPermission())
@@ -64,6 +69,11 @@ class MainActivity : ComponentActivity() {
                 )
             },
             onMessageShown = viewModel::messageShown,
+            onSetCategory = viewModel::setCategory,
+            onExport = { fileName, entries ->
+                viewModel.prepareExport(entries)
+                exportLauncher.launch(fileName)
+            },
         )
 
         setContent {
