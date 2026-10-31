@@ -4,6 +4,8 @@ import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.ExperimentalLayoutApi
+import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
@@ -11,7 +13,6 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyRow
@@ -19,14 +20,11 @@ import androidx.compose.foundation.lazy.items
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Clear
 import androidx.compose.material.icons.filled.Delete
+import androidx.compose.material.icons.filled.Lock
 import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material.icons.filled.Search
 import androidx.compose.material.icons.filled.Warning
 import androidx.compose.material3.AlertDialog
-import androidx.compose.material3.Button
-import androidx.compose.material3.ButtonDefaults
-import androidx.compose.material3.Card
-import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.Checkbox
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3Api
@@ -38,8 +36,10 @@ import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.SnackbarHost
 import androidx.compose.material3.SnackbarHostState
-import androidx.compose.material3.Tab
-import androidx.compose.material3.TabRow
+import androidx.compose.material3.HorizontalDivider
+import androidx.compose.material3.SegmentedButton
+import androidx.compose.material3.SegmentedButtonDefaults
+import androidx.compose.material3.SingleChoiceSegmentedButtonRow
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
@@ -54,8 +54,9 @@ import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import com.salroumi.smscleaner.BuildConfig
@@ -114,39 +115,71 @@ fun ReviewScreen(state: UiState, actions: ReviewActions) {
     }
 
     Scaffold(
+        containerColor = MaterialTheme.colorScheme.background,
         topBar = {
-            TopAppBar(
-                title = { Text("منظّف الرسائل", fontWeight = FontWeight.Bold) },
-                colors = TopAppBarDefaults.topAppBarColors(
-                    containerColor = MaterialTheme.colorScheme.primary,
-                    titleContentColor = MaterialTheme.colorScheme.onPrimary,
-                    actionIconContentColor = MaterialTheme.colorScheme.onPrimary,
-                ),
-                actions = {
-                    if (state.hasPermission) {
-                        IconButton(onClick = actions.onScan, enabled = !state.loading) {
-                            Icon(Icons.Default.Refresh, contentDescription = "إعادة الفحص")
+            Column {
+                TopAppBar(
+                    title = {
+                        Column {
+                            Text("منظّف الرسائل", style = MaterialTheme.typography.titleLarge)
+                            if (state.scanned) {
+                                Text(
+                                    state.tab.label,
+                                    style = MaterialTheme.typography.bodySmall,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                )
+                            }
                         }
-                    }
-                },
-            )
+                    },
+                    colors = TopAppBarDefaults.topAppBarColors(
+                        containerColor = MaterialTheme.colorScheme.surface,
+                        titleContentColor = MaterialTheme.colorScheme.onSurface,
+                        actionIconContentColor = MaterialTheme.colorScheme.primary,
+                    ),
+                    actions = {
+                        if (state.hasPermission) {
+                            IconButton(onClick = actions.onScan, enabled = !state.loading) {
+                                Icon(Icons.Default.Refresh, contentDescription = "إعادة الفحص")
+                            }
+                        }
+                    },
+                )
+                HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
+            }
         },
         snackbarHost = { SnackbarHost(snackbar) },
         bottomBar = {
-            if (state.scanned && state.items.isNotEmpty() && state.tab == ResultTab.MESSAGES) {
-                Surface(shadowElevation = 8.dp) {
-                    Button(
-                        onClick = {
-                            if (state.isDefaultApp) showConfirm = true else showNeedDefault = true
-                        },
-                        enabled = state.selectedVisible.isNotEmpty() && !state.loading,
-                        colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.error),
-                        modifier = Modifier.fillMaxWidth().padding(16.dp),
-                    ) {
-                        Icon(Icons.Default.Delete, contentDescription = null)
-                        Spacer(Modifier.width(8.dp))
-                        Text("حذف المحدد (${state.selectedVisible.size})")
+            Column {
+                // The delete bar only appears once something is selected, so it never covers the list for nothing.
+                if (state.tab == ResultTab.MESSAGES && state.selectedVisible.isNotEmpty()) {
+                    Surface(color = MaterialTheme.colorScheme.surface) {
+                        Column {
+                            HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
+                            Row(
+                                Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 10.dp),
+                                verticalAlignment = Alignment.CenterVertically,
+                            ) {
+                                Text(
+                                    "${state.selectedVisible.size} محددة",
+                                    style = MaterialTheme.typography.titleSmall,
+                                    modifier = Modifier.weight(1f),
+                                )
+                                DgaButton(
+                                    text = "حذف المحدد",
+                                    icon = Icons.Default.Delete,
+                                    destructive = true,
+                                    enabled = !state.loading,
+                                    onClick = {
+                                        if (state.isDefaultApp) showConfirm = true else showNeedDefault = true
+                                    },
+                                )
+                            }
+                        }
                     }
+                }
+                if (state.hasPermission && state.scanned) {
+                    HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
+                    AppNavigationBar(state.tab, actions.onTab)
                 }
             }
         },
@@ -248,7 +281,8 @@ fun ReviewScreen(state: UiState, actions: ReviewActions) {
 @Composable
 private fun PermissionPrompt(onGrant: () -> Unit) {
     CenteredMessage(
-        title = "مرحبًا 👋",
+        icon = Icons.Default.Lock,
+        title = "مرحبًا بك",
         body = "يحتاج التطبيق إذن قراءة الرسائل لمراجعتها وتصنيفها. تتم المراجعة على جهازك فقط ولا تُرسل أي رسالة لأي جهة.",
         button = "منح الإذن",
         onClick = onGrant,
@@ -258,6 +292,7 @@ private fun PermissionPrompt(onGrant: () -> Unit) {
 @Composable
 private fun StartPrompt(onScan: () -> Unit) {
     CenteredMessage(
+        icon = Icons.Default.Search,
         title = "جاهز للفحص",
         body = "سيتم فحص الرسائل الواردة وتحديد: الرسائل المشبوهة، المكررة، رموز التحقق القديمة، والإعلانات، " +
             "واستخراج العمليات المالية من رسائل البنوك وتصنيفها. لن يُحذف شيء قبل تأكيدك.",
@@ -267,32 +302,36 @@ private fun StartPrompt(onScan: () -> Unit) {
 }
 
 @Composable
-private fun CenteredMessage(title: String, body: String, button: String, onClick: () -> Unit) {
+private fun CenteredMessage(icon: ImageVector, title: String, body: String, button: String, onClick: () -> Unit) {
     Column(
-        Modifier.fillMaxSize().padding(32.dp),
+        Modifier.fillMaxSize().padding(24.dp),
         verticalArrangement = Arrangement.Center,
         horizontalAlignment = Alignment.CenterHorizontally,
     ) {
-        Text(title, style = MaterialTheme.typography.headlineSmall, fontWeight = FontWeight.Bold)
+        FeaturedIcon(icon)
+        Spacer(Modifier.height(20.dp))
+        Text(title, style = MaterialTheme.typography.headlineSmall, textAlign = TextAlign.Center)
+        Spacer(Modifier.height(8.dp))
+        Text(
+            body,
+            style = MaterialTheme.typography.bodyLarge,
+            color = LocalAppColors.current.textSecondary,
+            textAlign = TextAlign.Center,
+        )
+        Spacer(Modifier.height(28.dp))
+        DgaButton(text = button, onClick = onClick, modifier = Modifier.fillMaxWidth())
         Spacer(Modifier.height(12.dp))
-        Text(body, style = MaterialTheme.typography.bodyLarge)
-        Spacer(Modifier.height(24.dp))
-        Button(onClick = onClick) { Text(button) }
+        Text(
+            "🔒 كل الفحص يتم على جهازك فقط",
+            style = MaterialTheme.typography.bodySmall,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+        )
     }
 }
 
 @Composable
 private fun Results(state: UiState, actions: ReviewActions, onDeleteSender: (String) -> Unit) {
     Column(Modifier.fillMaxSize()) {
-        TabRow(selectedTabIndex = state.tab.ordinal) {
-            ResultTab.entries.forEach { tab ->
-                Tab(
-                    selected = state.tab == tab,
-                    onClick = { actions.onTab(tab) },
-                    text = { Text(tab.label, maxLines = 1) },
-                )
-            }
-        }
         when (state.tab) {
             ResultTab.MESSAGES -> MessagesList(state, actions)
             ResultTab.SENDERS -> SendersList(state, actions, onDeleteSender)
@@ -332,7 +371,7 @@ private fun SendersList(state: UiState, actions: ReviewActions, onDeleteSender: 
             )
         }
         items(shown, key = { it.key }) { sender ->
-            Card(
+            DgaCard(
                 modifier = Modifier.fillMaxWidth().clickable { actions.onOpenSender(sender.key, false) },
             ) {
                 Row(Modifier.padding(12.dp), verticalAlignment = Alignment.CenterVertically) {
@@ -351,14 +390,7 @@ private fun SendersList(state: UiState, actions: ReviewActions, onDeleteSender: 
                             style = MaterialTheme.typography.bodySmall,
                         )
                     }
-                    Surface(color = MaterialTheme.colorScheme.primary, shape = MaterialTheme.shapes.small) {
-                        Text(
-                            sender.total.toString(),
-                            color = MaterialTheme.colorScheme.onPrimary,
-                            fontWeight = FontWeight.Bold,
-                            modifier = Modifier.padding(horizontal = 10.dp, vertical = 4.dp),
-                        )
-                    }
+                    DgaTag(sender.total.toString(), TagKind.BRAND)
                     IconButton(onClick = { onDeleteSender(sender.key) }) {
                         Icon(
                             Icons.Default.Delete,
@@ -405,18 +437,7 @@ private fun MessagesList(state: UiState, actions: ReviewActions) {
         if (state.showRestoreHint && state.isDefaultApp) {
             item { RestoreCard(state.previousAppLabel, actions) }
         }
-        item {
-            val all = state.items
-            val received = all.count { !it.sms.sent && !it.sms.isMms }
-            val sent = all.count { it.sms.sent && !it.sms.isMms }
-            val mms = all.count { it.sms.isMms }
-            Text(
-                "الإصدار ${BuildConfig.VERSION_NAME} • تم فحص ${all.size} رسالة " +
-                    "(واردة $received، مرسلة $sent، وسائط $mms)",
-                style = MaterialTheme.typography.labelSmall,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-            )
-        }
+        item { ScanSummary(state) }
         state.senderFilter?.let { key ->
             item {
                 val name = state.items.firstOrNull { it.senderKey == key }
@@ -429,40 +450,7 @@ private fun MessagesList(state: UiState, actions: ReviewActions) {
                 )
             }
         }
-        item {
-            OutlinedTextField(
-                value = state.query,
-                onValueChange = actions.onQuery,
-                modifier = Modifier.fillMaxWidth(),
-                singleLine = true,
-                placeholder = { Text("ابحث باسم المرسل أو رقمه") },
-                leadingIcon = { Icon(Icons.Default.Search, contentDescription = null) },
-                trailingIcon = {
-                    if (state.query.isNotEmpty()) {
-                        IconButton(onClick = { actions.onQuery("") }) {
-                            Icon(Icons.Default.Clear, contentDescription = "مسح البحث")
-                        }
-                    }
-                },
-            )
-        }
-        item {
-            OutlinedTextField(
-                value = state.textQuery,
-                onValueChange = actions.onTextQuery,
-                modifier = Modifier.fillMaxWidth(),
-                singleLine = true,
-                placeholder = { Text("ابحث عن نص داخل الرسالة") },
-                leadingIcon = { Icon(Icons.Default.Search, contentDescription = null) },
-                trailingIcon = {
-                    if (state.textQuery.isNotEmpty()) {
-                        IconButton(onClick = { actions.onTextQuery("") }) {
-                            Icon(Icons.Default.Clear, contentDescription = "مسح البحث")
-                        }
-                    }
-                },
-            )
-        }
+        item { SearchBox(state, actions) }
         item {
             LazyRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                 item {
@@ -485,9 +473,12 @@ private fun MessagesList(state: UiState, actions: ReviewActions) {
         item {
             val visible = state.visibleItems
             val allSelected = visible.isNotEmpty() && visible.all { it.sms.id in state.selected }
-            Row(verticalAlignment = Alignment.CenterVertically) {
+            Row(
+                Modifier.fillMaxWidth().clickable { actions.onSelectAllVisible(!allSelected) },
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
                 Checkbox(checked = allSelected, onCheckedChange = { actions.onSelectAllVisible(it) })
-                Text("تحديد الكل في هذه القائمة (${visible.size})")
+                Text("تحديد الكل في هذه القائمة (${visible.size})", style = MaterialTheme.typography.bodyMedium)
             }
         }
         if (state.visibleItems.isEmpty()) {
@@ -513,11 +504,93 @@ private fun MessagesList(state: UiState, actions: ReviewActions) {
     }
 }
 
+/** Scan result at the top of the messages list: what was read and how much can be cleaned. */
+@OptIn(ExperimentalLayoutApi::class)
+@Composable
+private fun ScanSummary(state: UiState) {
+    val all = state.items
+    val suggested = all.count { it.verdict.suggestDelete }
+    val suspicious = all.count { it.verdict.category == Category.SUSPICIOUS }
+    DgaCard(Modifier.fillMaxWidth()) {
+        Column(Modifier.padding(16.dp)) {
+            Text("تم فحص ${all.size} رسالة", style = MaterialTheme.typography.titleMedium)
+            Spacer(Modifier.height(8.dp))
+            FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                DgaTag("مقترح حذفها $suggested", TagKind.WARNING)
+                if (suspicious > 0) DgaTag("مشبوهة $suspicious", TagKind.ERROR)
+                DgaTag("تُحفظ ${all.size - suggested}", TagKind.SUCCESS)
+            }
+            Spacer(Modifier.height(8.dp))
+            val received = all.count { !it.sms.sent && !it.sms.isMms }
+            val sent = all.count { it.sms.sent && !it.sms.isMms }
+            val mms = all.count { it.sms.isMms }
+            Text(
+                "واردة $received • مرسلة $sent • وسائط $mms • الإصدار ${BuildConfig.VERSION_NAME}",
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+        }
+    }
+}
+
+/** One search field; the switch underneath chooses whether it searches senders or message text. */
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+private fun SearchBox(state: UiState, actions: ReviewActions) {
+    var byText by rememberSaveable { mutableStateOf(state.textQuery.isNotEmpty() && state.query.isEmpty()) }
+    val value = if (byText) state.textQuery else state.query
+    val onChange = if (byText) actions.onTextQuery else actions.onQuery
+    Column {
+        OutlinedTextField(
+            value = value,
+            onValueChange = onChange,
+            modifier = Modifier.fillMaxWidth(),
+            singleLine = true,
+            shape = MaterialTheme.shapes.small,
+            placeholder = { Text(if (byText) "ابحث عن نص داخل الرسائل" else "ابحث باسم المرسل أو رقمه") },
+            leadingIcon = { Icon(Icons.Default.Search, contentDescription = null) },
+            trailingIcon = {
+                if (value.isNotEmpty()) {
+                    IconButton(onClick = { onChange("") }) {
+                        Icon(Icons.Default.Clear, contentDescription = "مسح البحث")
+                    }
+                }
+            },
+        )
+        Spacer(Modifier.height(8.dp))
+        SingleChoiceSegmentedButtonRow(Modifier.fillMaxWidth()) {
+            listOf(false to "المرسل", true to "نص الرسالة").forEachIndexed { i, (mode, label) ->
+                SegmentedButton(
+                    selected = byText == mode,
+                    onClick = {
+                        if (byText != mode) {
+                            // Carry the typed text over to the other kind of search.
+                            if (mode) {
+                                actions.onTextQuery(state.query)
+                                actions.onQuery("")
+                            } else {
+                                actions.onQuery(state.textQuery)
+                                actions.onTextQuery("")
+                            }
+                            byText = mode
+                        }
+                    },
+                    shape = SegmentedButtonDefaults.itemShape(i, 2, MaterialTheme.shapes.small),
+                    label = { Text(label) },
+                )
+            }
+        }
+    }
+}
+
 @Composable
 private fun RestoreCard(previousLabel: String?, actions: ReviewActions) {
-    Card(colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.secondaryContainer)) {
+    DgaCard(
+        containerColor = MaterialTheme.colorScheme.primaryContainer,
+        borderColor = MaterialTheme.colorScheme.primary.copy(alpha = 0.3f),
+    ) {
         Column(Modifier.padding(16.dp)) {
-            Text("انتهيت من التنظيف؟", fontWeight = FontWeight.Bold)
+            Text("انتهيت من التنظيف؟", style = MaterialTheme.typography.titleSmall)
             Spacer(Modifier.height(4.dp))
             Text(
                 "هذا التطبيق مخصّص للتنظيف وليس بديلًا كاملًا لتطبيق الرسائل (مثلًا لا يستقبل رسائل الوسائط MMS). " +
@@ -533,74 +606,69 @@ private fun RestoreCard(previousLabel: String?, actions: ReviewActions) {
 
 @Composable
 private fun MessageCard(item: ReviewItem, selected: Boolean, onToggle: () -> Unit) {
-    val (badgeColor, containerColor) = categoryColors(item.verdict.category)
-    Card(
+    val category = item.verdict.category
+    val suspicious = category == Category.SUSPICIOUS
+    val tag = tagColors(category.tagKind())
+    // Selected cards get the brand border so the selection is visible without reading the checkbox.
+    DgaCard(
         modifier = Modifier.fillMaxWidth().clickable(onClick = onToggle),
-        colors = CardDefaults.cardColors(containerColor = containerColor),
+        containerColor = when {
+            suspicious -> MaterialTheme.colorScheme.errorContainer
+            else -> MaterialTheme.colorScheme.surface
+        },
+        borderColor = when {
+            selected -> MaterialTheme.colorScheme.primary
+            suspicious -> MaterialTheme.colorScheme.error.copy(alpha = 0.4f)
+            else -> MaterialTheme.colorScheme.outlineVariant
+        },
     ) {
-        Row(Modifier.padding(12.dp), verticalAlignment = Alignment.Top) {
+        Row(Modifier.padding(start = 4.dp, end = 12.dp, top = 8.dp, bottom = 12.dp), verticalAlignment = Alignment.Top) {
             Checkbox(checked = selected, onCheckedChange = { onToggle() })
-            Column(Modifier.weight(1f)) {
+            Column(Modifier.weight(1f).padding(top = 10.dp)) {
                 Row(verticalAlignment = Alignment.CenterVertically) {
                     Text(
                         item.sms.contactName ?: item.sms.address.ifBlank { "مجهول" },
-                        fontWeight = FontWeight.Bold,
+                        style = MaterialTheme.typography.titleSmall,
                         modifier = Modifier.weight(1f),
                         maxLines = 1,
                         overflow = TextOverflow.Ellipsis,
                     )
-                    Surface(color = badgeColor, shape = MaterialTheme.shapes.small) {
-                        Text(
-                            item.verdict.category.label,
-                            color = Color.White,
-                            style = MaterialTheme.typography.labelSmall,
-                            modifier = Modifier.padding(horizontal = 8.dp, vertical = 2.dp),
-                        )
-                    }
+                    DgaTag(category.label, category.tagKind())
                 }
                 Text(
                     DateFormat.getDateTimeInstance(DateFormat.SHORT, DateFormat.SHORT).format(Date(item.sms.date)),
-                    style = MaterialTheme.typography.labelSmall,
+                    style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
-                Spacer(Modifier.height(4.dp))
+                Spacer(Modifier.height(6.dp))
                 Text(
                     item.sms.body.ifBlank { if (item.sms.isMms) "(رسالة وسائط بدون نص)" else "(فارغة)" },
+                    style = MaterialTheme.typography.bodyMedium,
                     maxLines = 4,
                     overflow = TextOverflow.Ellipsis,
                 )
                 Spacer(Modifier.height(6.dp))
                 item.verdict.reasons.forEach { reason ->
-                    Row(verticalAlignment = Alignment.CenterVertically) {
-                        if (item.verdict.category == Category.SUSPICIOUS) {
-                            Icon(
-                                Icons.Default.Warning,
-                                contentDescription = null,
-                                tint = badgeColor,
-                                modifier = Modifier.size(14.dp),
-                            )
-                            Spacer(Modifier.width(4.dp))
-                        }
-                        Text(reason, style = MaterialTheme.typography.bodySmall, color = badgeColor)
-                    }
+                    IconLine(
+                        icon = if (suspicious) Icons.Default.Warning else null,
+                        text = reason,
+                        color = if (suspicious) MaterialTheme.colorScheme.error else tag.content,
+                    )
                 }
             }
         }
     }
 }
 
-@Composable
-private fun categoryColors(category: Category): Pair<Color, Color> {
-    val surface = MaterialTheme.colorScheme.surface
-    return when (category) {
-        Category.SUSPICIOUS -> Color(0xFFC62828) to Color(0xFFC62828).copy(alpha = 0.10f)
-        Category.DUPLICATE -> Color(0xFF6D4C41) to surface
-        Category.OTP_EXPIRED -> Color(0xFFEF6C00) to surface
-        Category.PROMOTION -> Color(0xFF8E24AA) to surface
-        Category.OTP_RECENT -> Color(0xFF1E88E5) to surface
-        Category.TRANSACTION -> Color(0xFF2E7D32) to surface
-        Category.PERSONAL -> Color(0xFF00897B) to surface
-        Category.SENT -> Color(0xFF3949AB) to surface
-        Category.OTHER -> Color(0xFF546E7A) to surface
-    }
+/** DGA status colors: red for danger, orange for things to clean, green for what to keep. */
+private fun Category.tagKind(): TagKind = when (this) {
+    Category.SUSPICIOUS -> TagKind.ERROR
+    Category.DUPLICATE -> TagKind.NEUTRAL
+    Category.OTP_EXPIRED -> TagKind.WARNING
+    Category.PROMOTION -> TagKind.LAVENDER
+    Category.OTP_RECENT -> TagKind.INFO
+    Category.TRANSACTION -> TagKind.BRAND
+    Category.PERSONAL -> TagKind.SUCCESS
+    Category.SENT -> TagKind.GOLD
+    Category.OTHER -> TagKind.NEUTRAL
 }

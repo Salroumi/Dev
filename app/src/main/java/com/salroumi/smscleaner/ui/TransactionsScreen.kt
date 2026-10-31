@@ -3,7 +3,6 @@ package com.salroumi.smscleaner.ui
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.gestures.detectTapGestures
-import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
@@ -19,21 +18,27 @@ import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.selection.selectable
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Clear
+import androidx.compose.material.icons.filled.KeyboardArrowLeft
+import androidx.compose.material.icons.filled.KeyboardArrowRight
 import androidx.compose.material.icons.filled.Share
 import androidx.compose.material3.AlertDialog
-import androidx.compose.material3.Card
-import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.Checkbox
+import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.FilterChip
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButton
 import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.RadioButton
+import androidx.compose.material3.SegmentedButton
+import androidx.compose.material3.SegmentedButtonDefaults
+import androidx.compose.material3.SingleChoiceSegmentedButtonRow
+import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
@@ -45,13 +50,15 @@ import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
 import androidx.compose.ui.geometry.CornerRadius
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.LocalLayoutDirection
-import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.LayoutDirection
 import androidx.compose.ui.unit.dp
@@ -77,8 +84,6 @@ import java.util.Date
 import java.util.Locale
 import kotlin.math.abs
 
-private val IncomeColor = Color(0xFF2E7D32)
-private val ExpenseColor = Color(0xFFC62828)
 
 private fun monthLabel(key: Int, pattern: String = "MMMM yyyy"): String {
     val c = Calendar.getInstance().apply { clear(); set(key / 100, key % 100 - 1, 1) }
@@ -105,6 +110,7 @@ private enum class FlowFilter(val label: String) { ALL("الكل"), OUT("مصر�
 private const val LATEST_MONTH = 0
 private const val ALL_MONTHS = -1
 
+@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun TransactionsList(items: List<ReviewItem>, rules: CategoryRules, actions: ReviewActions) {
     val all = remember(items, rules) {
@@ -158,7 +164,7 @@ fun TransactionsList(items: List<ReviewItem>, rules: CategoryRules, actions: Rev
         if (all.isEmpty()) {
             item {
                 Column(Modifier.padding(24.dp)) {
-                    Text("لم يتم العثور على عمليات مالية", fontWeight = FontWeight.Bold)
+                    Text("لم يتم العثور على عمليات مالية", style = MaterialTheme.typography.titleSmall)
                     Text(
                         "تُقرأ العمليات من رسائل البنوك والمحافظ (شراء، سحب، حوالة، راتب…). " +
                             "رسائل البنوك التي لم تُفهم صيغتها تبقى في تبويب الرسائل.",
@@ -170,31 +176,26 @@ fun TransactionsList(items: List<ReviewItem>, rules: CategoryRules, actions: Rev
             return@LazyColumn
         }
         item {
-            LazyRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                items(TxSection.entries) { s ->
-                    FilterChip(selected = section == s, onClick = { section = s }, label = { Text(s.label) })
+            SingleChoiceSegmentedButtonRow(Modifier.fillMaxWidth()) {
+                TxSection.entries.forEachIndexed { i, s ->
+                    SegmentedButton(
+                        selected = section == s,
+                        onClick = { section = s },
+                        shape = SegmentedButtonDefaults.itemShape(i, TxSection.entries.size, MaterialTheme.shapes.small),
+                        icon = {},
+                        label = { Text(s.label, style = MaterialTheme.typography.labelMedium, maxLines = 1) },
+                    )
                 }
             }
         }
         // Subscriptions look at the whole history, so the month picker is hidden there.
         if (section != TxSection.SUBSCRIPTIONS && months.size > 1) {
             item {
-                LazyRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                    item {
-                        FilterChip(
-                            selected = month == null,
-                            onClick = { monthPick = ALL_MONTHS },
-                            label = { Text("كل الأشهر") },
-                        )
-                    }
-                    items(months, key = { it.first }) { (key, count) ->
-                        FilterChip(
-                            selected = month == key,
-                            onClick = { monthPick = key },
-                            label = { Text("${monthLabel(key)} ($count)") },
-                        )
-                    }
-                }
+                MonthStepper(
+                    months = months.map { it.first },
+                    month = month,
+                    onMonth = { monthPick = it ?: ALL_MONTHS },
+                )
             }
         }
         when (section) {
@@ -272,63 +273,111 @@ private fun LazyListScope.overview(
     }
 }
 
+/** Month switcher: arrows step through months that have transactions; «الكل» shows every month. */
 @Composable
-private fun SummaryCard(summary: TransactionSummary, comparison: MonthComparison?, month: Int?, count: Int) {
-    Card(colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.secondaryContainer)) {
-        Column(Modifier.padding(16.dp)) {
-            Row {
-                SummaryValue("الدخل", summary.income, summary.currency, IncomeColor, Modifier.weight(1f))
-                SummaryValue("المصروفات", summary.expenses, summary.currency, ExpenseColor, Modifier.weight(1f))
+private fun MonthStepper(months: List<Int>, month: Int?, onMonth: (Int?) -> Unit) {
+    // months is newest first.
+    val index = month?.let { months.indexOf(it) } ?: -1
+    val older = if (month == null) null else months.getOrNull(index + 1)
+    val newer = if (month == null) months.firstOrNull() else months.getOrNull(index - 1)
+    DgaCard(Modifier.fillMaxWidth()) {
+        Row(Modifier.padding(horizontal = 4.dp), verticalAlignment = Alignment.CenterVertically) {
+            // RTL: the start (right) side goes back in time.
+            IconButton(onClick = { onMonth(older) }, enabled = older != null) {
+                Icon(Icons.Default.KeyboardArrowRight, contentDescription = "الشهر السابق")
             }
-            HorizontalDivider(Modifier.padding(vertical = 8.dp))
-            SummaryValue(
-                "الصافي",
-                summary.net,
-                summary.currency,
-                if (summary.net >= 0) IncomeColor else ExpenseColor,
-                Modifier.fillMaxWidth(),
+            Text(
+                month?.let { monthLabel(it) } ?: "كل الأشهر",
+                style = MaterialTheme.typography.titleSmall,
+                textAlign = TextAlign.Center,
+                modifier = Modifier.weight(1f),
             )
-            val percent = comparison?.percent
-            if (month != null && comparison != null && percent != null) {
-                Spacer(Modifier.height(6.dp))
-                Row(verticalAlignment = Alignment.CenterVertically) {
-                    ChangeBadge(percent)
-                    Spacer(Modifier.width(6.dp))
-                    Text(
-                        "مقارنة بمصروفات ${monthLabel(previousMonth(month))} " +
-                            "(${formatMoney(comparison.previousExpenses, summary.currency)})",
-                        style = MaterialTheme.typography.bodySmall,
-                    )
-                }
+            IconButton(onClick = { onMonth(newer) }, enabled = newer != null) {
+                Icon(Icons.Default.KeyboardArrowLeft, contentDescription = "الشهر التالي")
             }
-            Spacer(Modifier.height(4.dp))
-            val notes = buildList {
-                add("$count عملية")
-                if (summary.otherCurrencyCount > 0) add("${summary.otherCurrencyCount} بعملات أخرى غير محسوبة في المجموع")
-                if (summary.declinedCount > 0) add("${summary.declinedCount} مرفوضة")
-            }
-            Text(notes.joinToString(" • "), style = MaterialTheme.typography.labelSmall)
+            FilterChip(
+                selected = month == null,
+                onClick = { onMonth(if (month == null) months.first() else null) },
+                label = { Text("الكل") },
+                modifier = Modifier.padding(end = 8.dp),
+            )
         }
     }
 }
 
-/** Spending up is shown as bad (red ▲), down as good (green ▼); the arrow keeps it readable without color. */
+/** Hero card in SA-flag green: spending as the headline number, then income, net and the monthly change. */
 @Composable
-private fun ChangeBadge(percent: Int) {
-    val (arrow, color) = when {
-        percent > 0 -> "▲" to ExpenseColor
-        percent < 0 -> "▼" to IncomeColor
-        else -> "=" to MaterialTheme.colorScheme.onSurfaceVariant
+private fun SummaryCard(summary: TransactionSummary, comparison: MonthComparison?, month: Int?, count: Int) {
+    val app = LocalAppColors.current
+    val dim = app.heroContent.copy(alpha = 0.8f)
+    DgaCard(Modifier.fillMaxWidth(), containerColor = app.heroBackground, borderColor = app.heroBackground) {
+        Column(Modifier.padding(20.dp)) {
+            Text(
+                if (month != null) "مصروفات ${monthLabel(month)}" else "إجمالي المصروفات",
+                style = MaterialTheme.typography.bodyMedium,
+                color = dim,
+            )
+            Text(
+                formatMoney(summary.expenses, summary.currency),
+                style = MaterialTheme.typography.headlineMedium,
+                color = app.heroContent,
+            )
+            val percent = comparison?.percent
+            if (month != null && comparison != null && percent != null) {
+                Spacer(Modifier.height(6.dp))
+                Surface(color = Color.White.copy(alpha = 0.15f), shape = MaterialTheme.shapes.small) {
+                    Text(
+                        "${changeArrow(percent)} ${abs(percent)}% عن ${monthLabel(previousMonth(month), "MMMM")}",
+                        style = MaterialTheme.typography.labelMedium,
+                        color = app.heroContent,
+                        modifier = Modifier.padding(horizontal = 8.dp, vertical = 2.dp),
+                    )
+                }
+            }
+            HorizontalDivider(Modifier.padding(vertical = 14.dp), color = Color.White.copy(alpha = 0.2f))
+            Row {
+                HeroValue("الدخل", formatMoney(summary.income, summary.currency), Modifier.weight(1f))
+                HeroValue(
+                    "الصافي",
+                    (if (summary.net < 0) "−" else "") + formatMoney(abs(summary.net), summary.currency),
+                    Modifier.weight(1f),
+                )
+            }
+            Spacer(Modifier.height(10.dp))
+            val notes = buildList {
+                add("$count عملية")
+                if (summary.otherCurrencyCount > 0) add("${summary.otherCurrencyCount} بعملات أخرى غير محسوبة")
+                if (summary.declinedCount > 0) add("${summary.declinedCount} مرفوضة")
+            }
+            Text(notes.joinToString(" • "), style = MaterialTheme.typography.bodySmall, color = dim)
+        }
     }
-    Text("$arrow ${abs(percent)}%", color = color, fontWeight = FontWeight.Bold, style = MaterialTheme.typography.bodySmall)
 }
 
 @Composable
-private fun SummaryValue(label: String, amount: Double, currency: String, color: Color, modifier: Modifier) {
+private fun HeroValue(label: String, value: String, modifier: Modifier) {
+    val app = LocalAppColors.current
     Column(modifier) {
-        Text(label, style = MaterialTheme.typography.labelMedium)
-        Text(formatMoney(amount, currency), color = color, fontWeight = FontWeight.Bold)
+        Text(label, style = MaterialTheme.typography.bodySmall, color = app.heroContent.copy(alpha = 0.8f))
+        Text(value, style = MaterialTheme.typography.titleMedium, color = app.heroContent)
     }
+}
+
+private fun changeArrow(percent: Int) = when {
+    percent > 0 -> "▲"
+    percent < 0 -> "▼"
+    else -> "="
+}
+
+/** Spending up is a red tag, down a green one; the arrow keeps it readable without color. */
+@Composable
+private fun ChangeBadge(percent: Int) {
+    val kind = when {
+        percent > 0 -> TagKind.ERROR
+        percent < 0 -> TagKind.SUCCESS
+        else -> TagKind.NEUTRAL
+    }
+    DgaTag("${changeArrow(percent)} ${abs(percent)}%", kind)
 }
 
 /** Daily spending bars for one month, or monthly bars for all months. Tap a bar for its value. */
@@ -345,13 +394,13 @@ private fun SpendingChart(all: List<TxEntry>, currency: String, month: Int?) {
     var selected by remember(bars) { mutableStateOf<Int?>(null) }
     val maxIndex = bars.indices.maxBy { bars[it].second }
     val shownIndex = selected ?: maxIndex
-    val barColor = if (isSystemInDarkTheme()) Color(0xFF3987E5) else Color(0xFF2A78D6)
+    val barColor = LocalAppColors.current.chart
     val axisColor = MaterialTheme.colorScheme.outlineVariant
     val max = bars[maxIndex].second
 
-    Card {
-        Column(Modifier.padding(12.dp)) {
-            Text(if (month != null) "الصرف اليومي" else "الصرف الشهري", fontWeight = FontWeight.Bold)
+    DgaCard(Modifier.fillMaxWidth()) {
+        Column(Modifier.padding(16.dp)) {
+            Text(if (month != null) "الصرف اليومي" else "الصرف الشهري", style = MaterialTheme.typography.titleSmall)
             Text(
                 (if (selected == null) "الأعلى: " else "") +
                     "${bars[shownIndex].first}: ${formatMoney(bars[shownIndex].second, currency)}",
@@ -418,9 +467,9 @@ private fun CategoryBreakdown(
     onSelect: (SpendCategory) -> Unit,
 ) {
     val changes = comparison?.changes?.associateBy { it.category }.orEmpty()
-    Card {
-        Column(Modifier.padding(12.dp)) {
-            Text("المصروفات حسب الفئة", fontWeight = FontWeight.Bold)
+    DgaCard(Modifier.fillMaxWidth()) {
+        Column(Modifier.padding(16.dp)) {
+            Text("المصروفات حسب الفئة", style = MaterialTheme.typography.titleSmall)
             if (month != null && comparison != null && comparison.previousExpenses > 0) {
                 Text(
                     "النسبة بجانب كل فئة مقارنة بـ ${monthLabel(previousMonth(month))}",
@@ -449,7 +498,7 @@ private fun CategoryBreakdown(
                         )
                     }
                     Spacer(Modifier.height(2.dp))
-                    LinearProgressIndicator(progress = { share }, modifier = Modifier.fillMaxWidth())
+                    DgaProgress(share)
                 }
             }
             Text(
@@ -521,11 +570,12 @@ private fun LazyListScope.transactionList(
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
                 modifier = Modifier.weight(1f),
             )
-            OutlinedButton(onClick = { onExport(shown) }, enabled = shown.isNotEmpty()) {
-                Icon(Icons.Default.Share, contentDescription = null)
-                Spacer(Modifier.width(6.dp))
-                Text("تصدير Excel")
-            }
+            DgaOutlinedButton(
+                text = "تصدير Excel",
+                icon = Icons.Default.Share,
+                onClick = { onExport(shown) },
+                enabled = shown.isNotEmpty(),
+            )
         }
     }
     items(shown, key = { it.id }) { entry ->
@@ -549,21 +599,21 @@ private fun TransactionCard(
 ) {
     val tx = entry.tx
     val (color, sign) = when (tx.type.flow) {
-        Flow.IN -> IncomeColor to "+"
-        Flow.OUT -> ExpenseColor to "−"
+        Flow.IN -> LocalAppColors.current.income to "+"
+        Flow.OUT -> LocalAppColors.current.expense to "−"
         Flow.NONE -> MaterialTheme.colorScheme.onSurfaceVariant to ""
     }
-    Card(modifier = Modifier.fillMaxWidth().clickable(onClick = onClick)) {
+    DgaCard(modifier = Modifier.fillMaxWidth().clickable(onClick = onClick)) {
         Column(Modifier.padding(12.dp)) {
             Row(verticalAlignment = Alignment.CenterVertically) {
                 Text(
                     tx.counterparty ?: tx.type.label,
-                    fontWeight = FontWeight.Bold,
+                    style = MaterialTheme.typography.titleSmall,
                     modifier = Modifier.weight(1f),
                     maxLines = 1,
                     overflow = TextOverflow.Ellipsis,
                 )
-                Text(sign + formatMoney(tx.amount, tx.currency), color = color, fontWeight = FontWeight.Bold)
+                Text(sign + formatMoney(tx.amount, tx.currency), color = color, style = MaterialTheme.typography.titleSmall)
             }
             val details = buildList {
                 add(tx.type.label)
@@ -592,6 +642,18 @@ private fun TransactionCard(
             }
         }
     }
+}
+
+/** Thin brand-green bar on a gray track, 8px tall with rounded ends. */
+@Composable
+private fun DgaProgress(fraction: Float) {
+    LinearProgressIndicator(
+        progress = { fraction },
+        modifier = Modifier.fillMaxWidth().height(8.dp).clip(CircleShape),
+        color = LocalAppColors.current.chart,
+        trackColor = MaterialTheme.colorScheme.surfaceVariant,
+        strokeCap = StrokeCap.Round,
+    )
 }
 
 @Composable
@@ -660,22 +722,19 @@ private fun LazyListScope.merchants(entries: List<TxEntry>, currency: String, on
         )
     }
     items(top.withIndex().toList(), key = { it.value.key }) { (rank, m) ->
-        Card(Modifier.fillMaxWidth().clickable { onMerchant(m.key) }) {
+        DgaCard(Modifier.fillMaxWidth().clickable { onMerchant(m.key) }) {
             Column(Modifier.padding(12.dp)) {
                 Row(verticalAlignment = Alignment.CenterVertically) {
-                    Text("${rank + 1}.", fontWeight = FontWeight.Bold)
+                    Text("${rank + 1}.", style = MaterialTheme.typography.titleSmall)
                     Spacer(Modifier.width(8.dp))
                     Column(Modifier.weight(1f)) {
-                        Text(m.name, fontWeight = FontWeight.Bold, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                        Text(m.name, style = MaterialTheme.typography.titleSmall, maxLines = 1, overflow = TextOverflow.Ellipsis)
                         Text("${m.category.label} • ${m.count} مرة", style = MaterialTheme.typography.bodySmall)
                     }
-                    Text(formatMoney(m.total, currency), fontWeight = FontWeight.Bold)
+                    Text(formatMoney(m.total, currency), style = MaterialTheme.typography.titleSmall)
                 }
                 Spacer(Modifier.height(4.dp))
-                LinearProgressIndicator(
-                    progress = { (m.total / top.first().total).toFloat() },
-                    modifier = Modifier.fillMaxWidth(),
-                )
+                DgaProgress((m.total / top.first().total).toFloat())
                 Text(
                     "${(m.total / total * 100).toInt()}% من صرف أكثر التجار",
                     style = MaterialTheme.typography.labelSmall,
@@ -691,7 +750,7 @@ private fun LazyListScope.subscriptions(all: List<TxEntry>) {
     if (subs.isEmpty()) {
         item {
             Column(Modifier.padding(24.dp)) {
-                Text("لم يتم العثور على اشتراكات متكررة", fontWeight = FontWeight.Bold)
+                Text("لم يتم العثور على اشتراكات متكررة", style = MaterialTheme.typography.titleSmall)
                 Text(
                     "يُعتبر الخصم اشتراكًا إذا تكرر من نفس التاجر بنفس المبلغ تقريبًا كل شهر.",
                     style = MaterialTheme.typography.bodySmall,
@@ -702,14 +761,18 @@ private fun LazyListScope.subscriptions(all: List<TxEntry>) {
     }
     val active = subs.filter { it.active }
     item {
-        Card(colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.secondaryContainer)) {
+        DgaCard(
+            Modifier.fillMaxWidth(),
+            containerColor = MaterialTheme.colorScheme.primaryContainer,
+            borderColor = MaterialTheme.colorScheme.primary.copy(alpha = 0.3f),
+        ) {
             Column(Modifier.padding(16.dp).fillMaxWidth()) {
                 Text("اشتراكاتك النشطة", style = MaterialTheme.typography.labelMedium)
                 active.groupBy { it.currency }.forEach { (currency, list) ->
                     Text(
                         formatMoney(list.sumOf { it.amount }, currency) + " شهريًا",
-                        fontWeight = FontWeight.Bold,
-                        color = ExpenseColor,
+                        style = MaterialTheme.typography.titleSmall,
+                        color = LocalAppColors.current.expense,
                     )
                 }
                 Text(
@@ -721,17 +784,17 @@ private fun LazyListScope.subscriptions(all: List<TxEntry>) {
         }
     }
     items(subs, key = { it.key + it.currency }) { s ->
-        Card(Modifier.fillMaxWidth()) {
+        DgaCard(Modifier.fillMaxWidth()) {
             Column(Modifier.padding(12.dp)) {
                 Row(verticalAlignment = Alignment.CenterVertically) {
                     Text(
                         s.name,
-                        fontWeight = FontWeight.Bold,
+                        style = MaterialTheme.typography.titleSmall,
                         modifier = Modifier.weight(1f),
                         maxLines = 1,
                         overflow = TextOverflow.Ellipsis,
                     )
-                    Text(formatMoney(s.amount, s.currency), fontWeight = FontWeight.Bold)
+                    Text(formatMoney(s.amount, s.currency), style = MaterialTheme.typography.titleSmall)
                 }
                 Text(
                     "${s.category.label} • ${s.count} خصومات • آخر خصم ${formatDate(s.lastDate)}",

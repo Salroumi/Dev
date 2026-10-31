@@ -1,7 +1,10 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
+    <!-- DGA Platforms Code: white header and bars on a gray-50 page. -->
     <style name="Theme.SmsCleaner" parent="android:Theme.Material.Light.NoActionBar">
-        <item name="android:statusBarColor">#FF1E5AA8</item>
-        <item name="android:windowBackground">#FFF7F9FC</item>
+        <item name="android:statusBarColor">#FFFFFFFF</item>
+        <item name="android:windowLightStatusBar">true</item>
+        <item name="android:windowBackground">#FFF9FAFB</item>
+        <item name="android:colorAccent">#FF1B8354</item>
     </style>
 </resources>
