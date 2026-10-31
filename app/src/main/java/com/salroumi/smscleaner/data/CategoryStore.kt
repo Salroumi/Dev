@@ -12,12 +12,16 @@ class CategoryStore(context: Context) {
     fun load(): CategoryRules = CategoryRules(
         byMerchant = read(MERCHANTS) { it },
         byMessage = read(MESSAGES) { it.toLongOrNull() },
+        ignoredMessages = prefs.getStringSet(IGNORED_MESSAGES, emptySet()).orEmpty().mapNotNull { it.toLongOrNull() }.toSet(),
+        ignoredSenders = prefs.getStringSet(IGNORED_SENDERS, emptySet()).orEmpty().toSet(),
     )
 
     fun save(rules: CategoryRules) {
         prefs.edit()
             .putStringSet(MERCHANTS, rules.byMerchant.map { "${it.key}\t${it.value.name}" }.toSet())
             .putStringSet(MESSAGES, rules.byMessage.map { "${it.key}\t${it.value.name}" }.toSet())
+            .putStringSet(IGNORED_MESSAGES, rules.ignoredMessages.map { it.toString() }.toSet())
+            .putStringSet(IGNORED_SENDERS, rules.ignoredSenders)
             .apply()
     }
 
@@ -33,5 +37,7 @@ class CategoryStore(context: Context) {
     private companion object {
         const val MERCHANTS = "merchants"
         const val MESSAGES = "messages"
+        const val IGNORED_MESSAGES = "ignored_messages"
+        const val IGNORED_SENDERS = "ignored_senders"
     }
 }

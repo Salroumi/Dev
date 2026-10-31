@@ -1,6 +1,7 @@
 package com.salroumi.smscleaner.analysis
 
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertNotNull
 import org.junit.Assert.assertNull
 import org.junit.Test
 
@@ -96,7 +97,7 @@ class TransactionParserTest {
         assertEquals(TransactionType.REFUND, refund.type)
         assertEquals(89.0, refund.amount, 0.001)
 
-        val declined = parse("عملية مرفوضة: رصيد غير كاف لعملية شراء بمبلغ 75 ريال لدى AMAZON")
+        val declined = parse("عملية مرفوضة: رصيد غير كاف لعملية شراء بمبلغ 75 ريال لدى AMAZON بطاقة 1234")
         assertEquals(TransactionType.DECLINED, declined.type)
         assertEquals(75.0, declined.amount, 0.001)
         assertEquals(Flow.NONE, declined.type.flow)
@@ -106,6 +107,38 @@ class TransactionParserTest {
     fun stcPayWalletIsNotAPhoneBill() {
         val tx = parse("STC Pay: تم الدفع بمبلغ 18 ريال لدى STARBUCKS")
         assertEquals(SpendCategory.FOOD, tx.category)
+    }
+
+    @Test
+    fun priceWithoutBankEvidenceIsNotATransaction() {
+        // A store or delivery notice mentions paying and a price, but no card, account, balance or bank.
+        assertNull(TransactionParser.parse("طلبك رقم 48213 جاهز. الدفع عند الاستلام 85 ريال", "Jahez"))
+        assertNull(TransactionParser.parse("Payment of SAR 120 is due for invoice 7781", "Clinic"))
+        // The same purchase from a bank sender is accepted.
+        assertNotNull(TransactionParser.parse("تم الدفع بمبلغ 85 ريال لدى JAHEZ", "AlRajhiBank"))
+    }
+
+    @Test
+    fun deliveryNoticeWithPhoneNumberIsNotATransaction() {
+        // Real message: the courier's phone number was read as 569,209,716 riyals because "رسوم" starts with "رس".
+        val body = "مساء الخير سليمان\n\nتم إسناد طلبك من stc إلى موظف التوصيل.\nرقم الطلب: 8821470\n" +
+            "(إلغاء الشرائح المتعددة)\n\nسيتواصل معك موظف التوصيل لتأكيد طلبك:\nمحمد\nجوال رقم: 0569209716\n\n" +
+            "رسوم التوصيل: مجاناً\nرسوم مسبقة الدفع للطلب: لا يوجد\nالمبلغ الإجمالي المطلوب عند تسليم الطلب: لا يوجد\n\n" +
+            "يمكنك الحصول على رمز التوثيق عبر بوابة النفاذ الموحد https://www.iam.gov.sa/\n\n" +
+            "للملاحظات، تواصل معنا على الرقم الموحد 8001243020"
+        assertNull(TransactionParser.parse(body, "900"))
+        assertNull(TransactionParser.parse(body, "AlRajhiBank"))
+    }
+
+    @Test
+    fun phoneAndReferenceNumbersAreNotAmounts() {
+        assertNull(TransactionParser.parse("شراء بطاقة 1234 جوال 0551234567 رسوم الخدمة", "AlRajhiBank"))
+        assertEquals(0.58, parse("رسوم إصدار بطاقة: 0.58 SAR من حساب 3021").amount, 0.001)
+    }
+
+    @Test
+    fun personalNumbersAreNeverBanks() {
+        assertNull(TransactionParser.parse("شراء بطاقة 1234 مبلغ 50 ريال لدى NOON", "+966551234567"))
     }
 
     @Test

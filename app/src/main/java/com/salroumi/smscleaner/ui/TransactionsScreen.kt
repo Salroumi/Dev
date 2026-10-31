@@ -110,12 +110,14 @@ fun TransactionsList(items: List<ReviewItem>, rules: CategoryRules, actions: Rev
     val all = remember(items, rules) {
         items.mapNotNull { item ->
             val tx = item.verdict.transaction ?: return@mapNotNull null
+            if (rules.isIgnored(item.sms.id, item.sms.address)) return@mapNotNull null
             TxEntry(
                 id = item.sms.id,
                 date = item.sms.date,
                 tx = rules.apply(item.sms.id, tx),
                 sender = item.sms.contactName ?: item.sms.address,
                 body = item.sms.body,
+                address = item.sms.address,
             )
         }.sortedByDescending { it.date }
     }
@@ -129,6 +131,7 @@ fun TransactionsList(items: List<ReviewItem>, rules: CategoryRules, actions: Rev
     var flow by rememberSaveable { mutableStateOf(FlowFilter.ALL) }
     var expanded by rememberSaveable { mutableStateOf<Long?>(null) }
     var editing by remember { mutableStateOf<TxEntry?>(null) }
+    var ignoring by remember { mutableStateOf<TxEntry?>(null) }
 
     val month = when (monthPick) {
         LATEST_MONTH -> months.firstOrNull()?.first
@@ -163,6 +166,7 @@ fun TransactionsList(items: List<ReviewItem>, rules: CategoryRules, actions: Rev
                     )
                 }
             }
+            if (rules.ignoredCount > 0) item { IgnoredRow(rules.ignoredCount, actions.onRestoreIgnored) }
             return@LazyColumn
         }
         item {
@@ -206,6 +210,7 @@ fun TransactionsList(items: List<ReviewItem>, rules: CategoryRules, actions: Rev
                 onClearMerchant = { merchant = null },
                 onExpand = { expanded = if (expanded == it) null else it },
                 onEdit = { editing = it },
+                onIgnore = { ignoring = it },
                 onExport = { shown ->
                     val name = "transactions-" + (month?.let { "${it / 100}-${"%02d".format(it % 100)}" } ?: "all") + ".csv"
                     actions.onExport(name, shown)
@@ -214,6 +219,30 @@ fun TransactionsList(items: List<ReviewItem>, rules: CategoryRules, actions: Rev
             TxSection.MERCHANTS -> merchants(inMonth, summary.currency, onMerchant = { showList(newMerchant = it) })
             TxSection.SUBSCRIPTIONS -> subscriptions(all)
         }
+        if (section == TxSection.LIST && rules.ignoredCount > 0) {
+            item { IgnoredRow(rules.ignoredCount, actions.onRestoreIgnored) }
+        }
+    }
+
+    ignoring?.let { entry ->
+        AlertDialog(
+            onDismissRequest = { ignoring = null },
+            title = { Text("ليست عملية مالية") },
+            text = { Text("استبعاد هذه الرسالة من العمليات المالية؟ لن تُحذف الرسالة، وتبقى في تبويب الرسائل.") },
+            confirmButton = {
+                Column(horizontalAlignment = Alignment.End) {
+                    TextButton(onClick = {
+                        ignoring = null
+                        actions.onIgnoreTransaction(entry.id, entry.address, false)
+                    }) { Text("هذه الرسالة فقط") }
+                    TextButton(onClick = {
+                        ignoring = null
+                        actions.onIgnoreTransaction(entry.id, entry.address, true)
+                    }) { Text("كل رسائل ${entry.sender}") }
+                    TextButton(onClick = { ignoring = null }) { Text("إلغاء") }
+                }
+            },
+        )
     }
 
     editing?.let { entry ->
@@ -443,6 +472,7 @@ private fun LazyListScope.transactionList(
     onClearMerchant: () -> Unit,
     onExpand: (Long) -> Unit,
     onEdit: (TxEntry) -> Unit,
+    onIgnore: (TxEntry) -> Unit,
     onExport: (List<TxEntry>) -> Unit,
 ) {
     val shown = entries.filter { e ->
@@ -499,12 +529,24 @@ private fun LazyListScope.transactionList(
         }
     }
     items(shown, key = { it.id }) { entry ->
-        TransactionCard(entry, expanded = expanded == entry.id, onClick = { onExpand(entry.id) }, onEdit = { onEdit(entry) })
+        TransactionCard(
+            entry,
+            expanded = expanded == entry.id,
+            onClick = { onExpand(entry.id) },
+            onEdit = { onEdit(entry) },
+            onIgnore = { onIgnore(entry) },
+        )
     }
 }
 
 @Composable
-private fun TransactionCard(entry: TxEntry, expanded: Boolean, onClick: () -> Unit, onEdit: () -> Unit) {
+private fun TransactionCard(
+    entry: TxEntry,
+    expanded: Boolean,
+    onClick: () -> Unit,
+    onEdit: () -> Unit,
+    onIgnore: () -> Unit,
+) {
     val tx = entry.tx
     val (color, sign) = when (tx.type.flow) {
         Flow.IN -> IncomeColor to "+"
@@ -539,11 +581,29 @@ private fun TransactionCard(entry: TxEntry, expanded: Boolean, onClick: () -> Un
             if (expanded) {
                 Spacer(Modifier.height(6.dp))
                 Text(entry.body, style = MaterialTheme.typography.bodySmall)
-                if (tx.type.flow == Flow.OUT) {
-                    TextButton(onClick = onEdit) { Text("تغيير الفئة") }
+                Row {
+                    if (tx.type.flow == Flow.OUT) {
+                        TextButton(onClick = onEdit) { Text("تغيير الفئة") }
+                    }
+                    TextButton(onClick = onIgnore) {
+                        Text("ليست عملية مالية", color = MaterialTheme.colorScheme.error)
+                    }
                 }
             }
         }
+    }
+}
+
+@Composable
+private fun IgnoredRow(count: Int, onRestore: () -> Unit) {
+    Row(verticalAlignment = Alignment.CenterVertically) {
+        Text(
+            "$count مستبعدة يدويًا من العمليات المالية",
+            style = MaterialTheme.typography.labelSmall,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+            modifier = Modifier.weight(1f),
+        )
+        TextButton(onClick = onRestore) { Text("استرجاعها") }
     }
 }
 

@@ -87,7 +87,7 @@ class SmsAnalyzer(private val settings: AnalyzerSettings = AnalyzerSettings()) {
         // Before the OTP check: a card's last 4 digits plus a word like "shopping" (contains "pin")
         // would otherwise look like an expired code and be suggested for deletion.
         if (!sms.fromContact) {
-            TransactionParser.parse(sms.body)?.let { tx ->
+            TransactionParser.parse(sms.body, sms.address)?.let { tx ->
                 return Verdict(
                     Category.TRANSACTION,
                     false,

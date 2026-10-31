@@ -86,6 +86,8 @@ class ReviewActions(
     val onMessageShown: () -> Unit,
     val onSetCategory: (id: Long, counterparty: String?, category: SpendCategory, forMerchant: Boolean) -> Unit,
     val onExport: (fileName: String, entries: List<TxEntry>) -> Unit,
+    val onIgnoreTransaction: (id: Long, address: String, wholeSender: Boolean) -> Unit,
+    val onRestoreIgnored: () -> Unit,
 )
 
 @OptIn(ExperimentalMaterial3Api::class)

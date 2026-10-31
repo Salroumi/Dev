@@ -54,10 +54,16 @@ data class Transaction(
  */
 object TransactionParser {
 
-    fun parse(body: String): Transaction? {
+    /** [sender] is the message's address; banks and wallets send from named IDs, not personal numbers. */
+    fun parse(body: String, sender: String = ""): Transaction? {
+        // A personal mobile number is never a bank: anything money-like from one is chat or a scam.
+        val senderDigits = sender.count { it.isDigit() }
+        if (senderDigits >= 9 && sender.none { it.isLetter() }) return null
+
         val text = SmsAnalyzer.normalize(prepare(body))
         if (hasAny(text, OTP_WORDS)) return null
-        if (hasAny(text, PROMO_WORDS) && ACCOUNT_REF.find(text) == null) return null
+        val accountRef = ACCOUNT_REF.find(text)
+        if (hasAny(text, PROMO_WORDS) && accountRef == null) return null
 
         val type = detectType(text) ?: return null
         val money = findMoney(text)
@@ -66,13 +72,19 @@ object TransactionParser {
             ?: return null
         if (main.amount <= 0.0) return null
 
+        // A word like "دفع" or "payment" next to a price is not enough (delivery notices, store receipts,
+        // invoices…). A real bank message names a card/account, shows a balance, or comes from a bank or wallet.
+        val hasBalance = money.any { it.label == Label.BALANCE }
+        val fromBank = isBankSender(sender) || hasAny(text, BANK_NAMES)
+        if (accountRef == null && !hasBalance && !fromBank) return null
+
         val counterparty = findCounterparty(prepare(body), type)
         return Transaction(
             type = type,
             amount = main.amount,
             currency = main.currency,
             counterparty = counterparty,
-            account = ACCOUNT_REF.find(text)?.groupValues?.get(1),
+            account = accountRef?.groupValues?.get(1),
             balance = money.firstOrNull { it.label == Label.BALANCE }?.amount,
             category = categorize(type, counterparty, text),
         )
@@ -227,14 +239,20 @@ object TransactionParser {
         else Regex("(?<!\\p{L})(?:[وبلف]?(?:ال)?)$escaped(?!\\p{L})")
     }
 
-    private const val NUM = "([0-9]{1,3}(?:,[0-9]{3})+(?:\\.[0-9]+)?|[0-9]+(?:\\.[0-9]+)?)"
+    /**
+     * An amount: "1,250.50", "45.5", "0.58". No leading zero and at most 7 plain digits, so phone numbers
+     * (0569209716), order and reference numbers are never read as money.
+     */
+    private const val NUM =
+        "([1-9][0-9]{0,2}(?:,[0-9]{3})+(?:\\.[0-9]+)?|(?:[1-9][0-9]{0,6}|0)(?:\\.[0-9]+)?)"
     private const val CUR =
         "(sar|sr|usd|aed|eur|gbp|kwd|bhd|qar|omr|egp|jod|ر\\.س|ر س|رس|ريالات|ريالا|ريال|دولار|درهم|يورو|دينار|جنيه|د\\.ك|د\\.ب|ر\\.ق|ر\\.ع|\\$|€|£)"
-    private val CUR_BEFORE = Regex("(?<![a-z])$CUR\\s*[:.]?\\s*$NUM(?![0-9])")
-    private val CUR_AFTER = Regex("(?<![0-9.,])$NUM\\s*$CUR(?![a-z])")
+    // The currency must be a whole word: "رسوم" (fees) starts with "رس" but is not riyals.
+    private val CUR_BEFORE = Regex("(?<!\\p{L})$CUR\\s*[:.]?\\s*$NUM(?![0-9])")
+    private val CUR_AFTER = Regex("(?<![0-9.,])$NUM\\s*$CUR(?![\\p{L}0-9])")
     private val AMOUNT_LABEL = Regex("(?:مبلغ|بمبلغ|المبلغ|amount|amt)\\s*[:]?\\s*$NUM(?![0-9])")
     private val ACCOUNT_REF = Regex(
-        "(?:بطاقه|بطاقتك|حساب|حسابك|مدي|فيزا|ماستر|ائتمانيه|card|account|acc|a/c|visa|mada|mastercard|ending|من)" +
+        "(?:بطاقه|بطاقتك|حساب|حسابك|مدي|فيزا|ماستر|ائتمانيه|card|account|acc|a/c|visa|mada|mastercard|ending|من|الي|to)" +
             "[^0-9\\n]{0,15}?[*x#]*([0-9]{4})(?![0-9])"
     )
 
@@ -265,6 +283,25 @@ object TransactionParser {
     )
     private val PARTY_REJECT = Regex(
         "^(حساب|حسابك|بطاقه|بطاقتك|رصيد|your|account|card|the|a |بنك|مبلغ|amount|sar|ر\\.س|ريال)"
+    )
+
+    /** Sender IDs are written as one word ("AlRajhiBank", "STCPAY"), so they are matched as substrings. */
+    private fun isBankSender(sender: String): Boolean {
+        val id = sender.lowercase().filter { it in 'a'..'z' }
+        return BANK_SENDER_IDS.any { id.contains(it) } || BANK_SENDER_PREFIXES.any { id.startsWith(it) }
+    }
+
+    private val BANK_SENDER_IDS = listOf(
+        "bank", "rajhi", "alahli", "riyad", "alinma", "bilad", "jazira", "saib", "stcpay", "urpay", "barq",
+        "tiqmo", "d360", "enjaz", "emiratesnbd", "wallet",
+    )
+    private val BANK_SENDER_PREFIXES = listOf("snb", "sab", "anb", "bsf", "baj")
+
+    private val BANK_NAMES = words(
+        "bank", "بنك", "مصرف", "rajhi", "الراجحي", "alahli", "الاهلي", "snb", "riyad", "الرياض", "alinma",
+        "الانماء", "albilad", "البلاد", "sab", "ساب", "anb", "العربي الوطني", "bsf", "الفرنسي", "aljazira",
+        "الجزيره", "baj", "saib", "emirates nbd", "stc pay", "stcpay", "stc bank", "urpay", "barq", "tiqmo",
+        "d360", "enjaz", "انجاز", "mobile pay", "wallet", "محفظه",
     )
 
     private val OTP_WORDS = words(

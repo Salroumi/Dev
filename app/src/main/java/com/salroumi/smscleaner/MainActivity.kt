@@ -70,6 +70,8 @@ class MainActivity : ComponentActivity() {
             },
             onMessageShown = viewModel::messageShown,
             onSetCategory = viewModel::setCategory,
+            onIgnoreTransaction = viewModel::ignoreTransaction,
+            onRestoreIgnored = viewModel::restoreIgnored,
             onExport = { fileName, entries ->
                 viewModel.prepareExport(entries)
                 exportLauncher.launch(fileName)

@@ -11,6 +11,7 @@ import com.salroumi.smscleaner.analysis.SmsRecord
 import com.salroumi.smscleaner.analysis.SpendCategory
 import com.salroumi.smscleaner.analysis.TxEntry
 import com.salroumi.smscleaner.analysis.merchantKey
+import com.salroumi.smscleaner.analysis.senderRuleKey
 import com.salroumi.smscleaner.analysis.transactionsCsv
 import com.salroumi.smscleaner.data.CategoryStore
 import com.salroumi.smscleaner.analysis.Verdict
@@ -290,6 +291,22 @@ class ReviewViewModel(app: Application) : AndroidViewModel(app) {
             categoryStore.save(updated)
             s.copy(categoryRules = updated, message = "تم تغيير الفئة إلى «${category.label}»")
         }
+    }
+
+    /** Hides a message (or every message from its sender) from the transactions tab. */
+    fun ignoreTransaction(id: Long, address: String, wholeSender: Boolean) = updateRules("تم الاستبعاد من العمليات المالية") {
+        if (wholeSender) it.copy(ignoredSenders = it.ignoredSenders + senderRuleKey(address))
+        else it.copy(ignoredMessages = it.ignoredMessages + id)
+    }
+
+    fun restoreIgnored() = updateRules("تم استرجاع الرسائل المستبعدة") {
+        it.copy(ignoredMessages = emptySet(), ignoredSenders = emptySet())
+    }
+
+    private fun updateRules(message: String, change: (CategoryRules) -> CategoryRules) {
+        val updated = change(_state.value.categoryRules)
+        categoryStore.save(updated)
+        _state.update { it.copy(categoryRules = updated, message = message) }
     }
 
     fun prepareExport(entries: List<TxEntry>) {

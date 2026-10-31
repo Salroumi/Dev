@@ -13,6 +13,8 @@ data class TxEntry(
     val tx: Transaction,
     val sender: String = "",
     val body: String = "",
+    /** Raw sender address, used to ignore a whole sender. */
+    val address: String = "",
 )
 
 /** Calendar month of a timestamp as yyyyMM, e.g. 202405. */
@@ -35,17 +37,29 @@ fun merchantKey(name: String): String {
 private val NON_LETTERS = Regex("[^\\p{L} ]")
 private val SPACES = Regex("\\s+")
 
-/** Categories the user picked by hand: for every transaction of a merchant, or for one message. */
+/**
+ * Corrections the user made by hand: categories for every transaction of a merchant or for one message,
+ * and messages or senders that are not transactions at all.
+ */
 data class CategoryRules(
     val byMerchant: Map<String, SpendCategory> = emptyMap(),
     val byMessage: Map<Long, SpendCategory> = emptyMap(),
+    val ignoredMessages: Set<Long> = emptySet(),
+    val ignoredSenders: Set<String> = emptySet(),
 ) {
+    fun isIgnored(id: Long, address: String): Boolean =
+        id in ignoredMessages || senderRuleKey(address) in ignoredSenders
+
+    val ignoredCount: Int get() = ignoredMessages.size + ignoredSenders.size
+
     fun apply(id: Long, tx: Transaction): Transaction {
         if (tx.type.flow != Flow.OUT) return tx
         val chosen = byMessage[id] ?: tx.counterparty?.let { byMerchant[merchantKey(it)] } ?: return tx
         return tx.copy(category = chosen)
     }
 }
+
+fun senderRuleKey(address: String): String = address.trim().lowercase()
 
 /** Percentage change from [previous] to [current], or null when there is nothing to compare with. */
 fun percentChange(current: Double, previous: Double): Int? =

@@ -108,3 +108,14 @@ class TransactionInsightsTest {
         assertTrue(row.endsWith("Bank,\"line1\nline2\""))
     }
 }
+
+class CategoryRulesIgnoreTest {
+    @Test
+    fun ignoresMessagesAndWholeSenders() {
+        val rules = CategoryRules(ignoredMessages = setOf(5L), ignoredSenders = setOf(senderRuleKey(" STC ")))
+        assertTrue(rules.isIgnored(5, "AlRajhiBank"))
+        assertTrue(rules.isIgnored(9, "stc"))
+        assertTrue(!rules.isIgnored(9, "AlRajhiBank"))
+        assertEquals(2, rules.ignoredCount)
+    }
+}
